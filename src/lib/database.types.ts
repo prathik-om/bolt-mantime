@@ -43,39 +43,45 @@ export type Database = {
       }
       class_offerings: {
         Row: {
-          class_section_id: string
+          assignment_type: string | null
+          class_id: string
+          course_id: string
           id: string
           periods_per_week: number
-          subject_id: string
+          required_hours_per_term: number | null
           term_id: string
         }
         Insert: {
-          class_section_id: string
+          assignment_type?: string | null
+          class_id: string
+          course_id: string
           id?: string
           periods_per_week: number
-          subject_id: string
+          required_hours_per_term?: number | null
           term_id: string
         }
         Update: {
-          class_section_id?: string
+          assignment_type?: string | null
+          class_id?: string
+          course_id?: string
           id?: string
           periods_per_week?: number
-          subject_id?: string
+          required_hours_per_term?: number | null
           term_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "class_offerings_class_section_id_fkey"
-            columns: ["class_section_id"]
+            foreignKeyName: "class_offerings_class_id_fkey"
+            columns: ["class_id"]
             isOneToOne: false
-            referencedRelation: "class_sections"
+            referencedRelation: "classes"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "class_offerings_subject_id_fkey"
-            columns: ["subject_id"]
+            foreignKeyName: "class_offerings_course_id_fkey"
+            columns: ["course_id"]
             isOneToOne: false
-            referencedRelation: "subjects"
+            referencedRelation: "courses"
             referencedColumns: ["id"]
           },
           {
@@ -87,44 +93,123 @@ export type Database = {
           },
         ]
       }
-      class_sections: {
+      classes: {
         Row: {
-          class_teacher_id: string | null
+          created_at: string | null
           grade_level: number
           id: string
-          is_active: boolean | null
           name: string
           school_id: string
-          student_count: number | null
+          updated_at: string | null
         }
         Insert: {
-          class_teacher_id?: string | null
+          created_at?: string | null
           grade_level: number
           id?: string
-          is_active?: boolean | null
           name: string
           school_id: string
-          student_count?: number | null
+          updated_at?: string | null
         }
         Update: {
-          class_teacher_id?: string | null
+          created_at?: string | null
           grade_level?: number
           id?: string
-          is_active?: boolean | null
           name?: string
           school_id?: string
-          student_count?: number | null
+          updated_at?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "class_sections_class_teacher_id_fkey"
-            columns: ["class_teacher_id"]
+            foreignKeyName: "classes_school_id_fkey"
+            columns: ["school_id"]
             isOneToOne: false
-            referencedRelation: "teachers"
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      courses: {
+        Row: {
+          code: string | null
+          department_id: string
+          grade_level: number
+          hours_distribution_type: string | null
+          id: string
+          name: string
+          school_id: string
+          term_hours: Json | null
+          total_hours_per_year: number | null
+        }
+        Insert: {
+          code?: string | null
+          department_id: string
+          grade_level: number
+          hours_distribution_type?: string | null
+          id?: string
+          name: string
+          school_id: string
+          term_hours?: Json | null
+          total_hours_per_year?: number | null
+        }
+        Update: {
+          code?: string | null
+          department_id?: string
+          grade_level?: number
+          hours_distribution_type?: string | null
+          id?: string
+          name?: string
+          school_id?: string
+          term_hours?: Json | null
+          total_hours_per_year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "courses_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "class_sections_school_id_fkey"
+            foreignKeyName: "courses_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      departments: {
+        Row: {
+          code: string | null
+          created_at: string | null
+          description: string | null
+          id: string
+          name: string
+          school_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          code?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          school_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          code?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          school_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "departments_school_id_fkey"
             columns: ["school_id"]
             isOneToOne: false
             referencedRelation: "schools"
@@ -151,107 +236,79 @@ export type Database = {
           reason?: string
           term_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "holidays_term_id_fkey"
-            columns: ["term_id"]
-            isOneToOne: false
-            referencedRelation: "terms"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          id: string
+          role: string | null
+          school_id: string | null
+        }
+        Insert: {
+          id: string
+          role?: string | null
+          school_id?: string | null
+        }
+        Update: {
+          id?: string
+          role?: string | null
+          school_id?: string | null
+        }
+        Relationships: []
       }
       rooms: {
         Row: {
           capacity: number | null
+          created_at: string | null
           id: string
           is_active: boolean | null
           name: string
           room_type: string
           school_id: string
+          updated_at: string | null
         }
         Insert: {
           capacity?: number | null
+          created_at?: string | null
           id?: string
           is_active?: boolean | null
           name: string
           room_type: string
           school_id: string
+          updated_at?: string | null
         }
         Update: {
           capacity?: number | null
+          created_at?: string | null
           id?: string
           is_active?: boolean | null
           name?: string
           room_type?: string
           school_id?: string
+          updated_at?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "rooms_school_id_fkey"
-            columns: ["school_id"]
-            isOneToOne: false
-            referencedRelation: "schools"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       scheduled_lessons: {
         Row: {
           date: string
-          generation_id: string
           id: number
-          notes: string | null
-          room_id: string | null
-          status: string
-          substitute_teacher_id: string | null
           teaching_assignment_id: string
           timeslot_id: string
         }
         Insert: {
           date: string
-          generation_id: string
           id?: number
-          notes?: string | null
-          room_id?: string | null
-          status?: string
-          substitute_teacher_id?: string | null
           teaching_assignment_id: string
           timeslot_id: string
         }
         Update: {
           date?: string
-          generation_id?: string
           id?: number
-          notes?: string | null
-          room_id?: string | null
-          status?: string
-          substitute_teacher_id?: string | null
           teaching_assignment_id?: string
           timeslot_id?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "scheduled_lessons_generation_id_fkey"
-            columns: ["generation_id"]
-            isOneToOne: false
-            referencedRelation: "timetable_generations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "scheduled_lessons_room_id_fkey"
-            columns: ["room_id"]
-            isOneToOne: false
-            referencedRelation: "rooms"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "scheduled_lessons_substitute_teacher_id_fkey"
-            columns: ["substitute_teacher_id"]
-            isOneToOne: false
-            referencedRelation: "teachers"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "scheduled_lessons_teaching_assignment_id_fkey"
             columns: ["teaching_assignment_id"]
@@ -259,106 +316,114 @@ export type Database = {
             referencedRelation: "teaching_assignments"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "scheduled_lessons_timeslot_id_fkey"
-            columns: ["timeslot_id"]
-            isOneToOne: false
-            referencedRelation: "time_slots"
-            referencedColumns: ["id"]
-          },
         ]
       }
       schools: {
         Row: {
-          address: string | null
-          board_affiliation: string | null
-          created_at: string | null
+          end_time: string | null
           id: string
           name: string
-          updated_at: string | null
+          period_duration: number | null
+          sessions_per_day: number | null
+          start_time: string | null
+          user_id: string | null
+          working_days: string[] | null
         }
         Insert: {
-          address?: string | null
-          board_affiliation?: string | null
-          created_at?: string | null
+          end_time?: string | null
           id?: string
           name: string
-          updated_at?: string | null
+          period_duration?: number | null
+          sessions_per_day?: number | null
+          start_time?: string | null
+          user_id?: string | null
+          working_days?: string[] | null
         }
         Update: {
-          address?: string | null
-          board_affiliation?: string | null
-          created_at?: string | null
+          end_time?: string | null
           id?: string
           name?: string
-          updated_at?: string | null
+          period_duration?: number | null
+          sessions_per_day?: number | null
+          start_time?: string | null
+          user_id?: string | null
+          working_days?: string[] | null
         }
         Relationships: []
       }
-      subjects: {
+      subject_grade_mappings: {
         Row: {
-          code: string | null
+          created_at: string | null
+          department_id: string
+          grade_level: number
           id: string
-          is_active: boolean | null
-          name: string
-          required_room_type: string | null
-          school_id: string
-          subject_type: string | null
+          is_required: boolean | null
+          periods_per_week: number | null
+          updated_at: string | null
         }
         Insert: {
-          code?: string | null
+          created_at?: string | null
+          department_id: string
+          grade_level: number
           id?: string
-          is_active?: boolean | null
-          name: string
-          required_room_type?: string | null
-          school_id: string
-          subject_type?: string | null
+          is_required?: boolean | null
+          periods_per_week?: number | null
+          updated_at?: string | null
         }
         Update: {
-          code?: string | null
+          created_at?: string | null
+          department_id?: string
+          grade_level?: number
           id?: string
-          is_active?: boolean | null
-          name?: string
-          required_room_type?: string | null
-          school_id?: string
-          subject_type?: string | null
+          is_required?: boolean | null
+          periods_per_week?: number | null
+          updated_at?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "subjects_school_id_fkey"
-            columns: ["school_id"]
+            foreignKeyName: "subject_grade_mappings_department_id_fkey"
+            columns: ["department_id"]
             isOneToOne: false
-            referencedRelation: "schools"
+            referencedRelation: "departments"
             referencedColumns: ["id"]
           },
         ]
       }
-      teacher_qualifications: {
+      teacher_departments: {
         Row: {
+          created_at: string | null
+          department_id: string
           id: string
-          subject_id: string
+          is_primary: boolean | null
           teacher_id: string
+          updated_at: string | null
         }
         Insert: {
+          created_at?: string | null
+          department_id: string
           id?: string
-          subject_id: string
+          is_primary?: boolean | null
           teacher_id: string
+          updated_at?: string | null
         }
         Update: {
+          created_at?: string | null
+          department_id?: string
           id?: string
-          subject_id?: string
+          is_primary?: boolean | null
           teacher_id?: string
+          updated_at?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "teacher_qualifications_subject_id_fkey"
-            columns: ["subject_id"]
+            foreignKeyName: "teacher_departments_department_id_fkey"
+            columns: ["department_id"]
             isOneToOne: false
-            referencedRelation: "subjects"
+            referencedRelation: "departments"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "teacher_qualifications_teacher_id_fkey"
+            foreignKeyName: "teacher_departments_teacher_id_fkey"
             columns: ["teacher_id"]
             isOneToOne: false
             referencedRelation: "teachers"
@@ -366,45 +431,75 @@ export type Database = {
           },
         ]
       }
+      teacher_time_constraints: {
+        Row: {
+          constraint_type: string
+          created_at: string | null
+          id: string
+          priority: number | null
+          reason: string | null
+          teacher_id: string
+          time_slot_id: string
+        }
+        Insert: {
+          constraint_type: string
+          created_at?: string | null
+          id?: string
+          priority?: number | null
+          reason?: string | null
+          teacher_id: string
+          time_slot_id: string
+        }
+        Update: {
+          constraint_type?: string
+          created_at?: string | null
+          id?: string
+          priority?: number | null
+          reason?: string | null
+          teacher_id?: string
+          time_slot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "teacher_time_constraints_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "teachers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "teacher_time_constraints_time_slot_id_fkey"
+            columns: ["time_slot_id"]
+            isOneToOne: false
+            referencedRelation: "time_slots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       teachers: {
         Row: {
-          created_at: string | null
           email: string
-          employment_type: string | null
           first_name: string
           id: string
-          is_active: boolean | null
           last_name: string
           max_periods_per_week: number | null
           school_id: string
-          updated_at: string | null
-          user_id: string | null
         }
         Insert: {
-          created_at?: string | null
           email: string
-          employment_type?: string | null
           first_name: string
           id?: string
-          is_active?: boolean | null
           last_name: string
           max_periods_per_week?: number | null
           school_id: string
-          updated_at?: string | null
-          user_id?: string | null
         }
         Update: {
-          created_at?: string | null
           email?: string
-          employment_type?: string | null
           first_name?: string
           id?: string
-          is_active?: boolean | null
           last_name?: string
           max_periods_per_week?: number | null
           school_id?: string
-          updated_at?: string | null
-          user_id?: string | null
         }
         Relationships: [
           {
@@ -455,6 +550,7 @@ export type Database = {
           end_date: string
           id: string
           name: string
+          period_duration_minutes: number | null
           start_date: string
         }
         Insert: {
@@ -462,6 +558,7 @@ export type Database = {
           end_date: string
           id?: string
           name: string
+          period_duration_minutes?: number | null
           start_date: string
         }
         Update: {
@@ -469,6 +566,7 @@ export type Database = {
           end_date?: string
           id?: string
           name?: string
+          period_duration_minutes?: number | null
           start_date?: string
         }
         Relationships: [
@@ -512,15 +610,7 @@ export type Database = {
           slot_name?: string | null
           start_time?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "time_slots_school_id_fkey"
-            columns: ["school_id"]
-            isOneToOne: false
-            referencedRelation: "schools"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       timetable_generations: {
         Row: {
@@ -547,22 +637,161 @@ export type Database = {
           status?: string
           term_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "timetable_generations_term_id_fkey"
-            columns: ["term_id"]
-            isOneToOne: false
-            referencedRelation: "terms"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
     }
     Views: {
-      [_ in never]: never
+      curriculum_structure_guide: {
+        Row: {
+          concept: string | null
+          description: string | null
+          table_name: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
-      [_ in never]: never
+      create_class_section: {
+        Args: { p_school_id: string; p_grade_level: number; p_name: string }
+        Returns: string
+      }
+      delete_class_safely: {
+        Args: { class_id: string }
+        Returns: {
+          success: boolean
+          message: string
+          deleted_offerings: number
+          deleted_mappings: number
+          deleted_assignments: number
+        }[]
+      }
+      explain_class_structure: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          component: string
+          purpose: string
+          key_fields: string
+        }[]
+      }
+      explain_curriculum_structure: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          component: string
+          purpose: string
+          key_fields: string
+        }[]
+      }
+      get_class_section_curriculum_summary: {
+        Args: { p_class_id: string; p_term_id: string }
+        Returns: {
+          total_offerings: number
+          total_periods_per_week: number
+          total_hours_per_term: number
+          assigned_offerings: number
+          unassigned_offerings: number
+        }[]
+      }
+      get_curriculum_consistency_report: {
+        Args: { p_school_id?: string }
+        Returns: {
+          class_name: string
+          course_name: string
+          periods_per_week: number
+          required_hours_per_term: number
+          expected_hours: number
+          variance_hours: number
+          status: string
+          recommendation: string
+        }[]
+      }
+      get_schema_overview: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          table_name: string
+          purpose: string
+          single_source_of_truth: boolean
+          key_relationships: string
+        }[]
+      }
+      get_teacher_department_summary: {
+        Args: { p_teacher_id: string }
+        Returns: {
+          department_id: string
+          department_name: string
+          department_code: string
+          is_primary: boolean
+          course_count: number
+          courses: string[]
+        }[]
+      }
+      get_teacher_qualifications: {
+        Args: { p_teacher_id: string }
+        Returns: {
+          course_id: string
+          course_name: string
+          course_code: string
+          department_id: string
+          department_name: string
+          grade_level: number
+          is_primary_department: boolean
+        }[]
+      }
+      get_teachers_for_course: {
+        Args: { p_course_id: string }
+        Returns: {
+          teacher_id: string
+          teacher_name: string
+          teacher_email: string
+          department_id: string
+          department_name: string
+          is_primary_department: boolean
+        }[]
+      }
+      my_function_name: {
+        Args: { p_class_id: string }
+        Returns: undefined
+      }
+      preview_class_deletion: {
+        Args: { class_id: string }
+        Returns: {
+          class_name: string
+          offerings_count: number
+          mappings_count: number
+          assignments_count: number
+          courses_affected: string[]
+          teachers_affected: string[]
+        }[]
+      }
+      validate_curriculum_consistency: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          validation_type: string
+          message: string
+          offering_id: string
+        }[]
+      }
+      validate_curriculum_hours: {
+        Args: {
+          p_periods_per_week: number
+          p_required_hours_per_term: number
+          p_period_duration_minutes?: number
+          p_weeks_per_term?: number
+        }
+        Returns: {
+          is_valid: boolean
+          expected_hours: number
+          variance_hours: number
+          message: string
+        }[]
+      }
+      validate_schema_consistency: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          validation_type: string
+          message: string
+          severity: string
+        }[]
+      }
     }
     Enums: {
       day_of_week:

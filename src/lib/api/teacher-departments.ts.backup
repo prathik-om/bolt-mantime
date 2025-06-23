@@ -1,0 +1,311 @@
+import { createClient } from '@/utils/supabase/client';
+import type { Database } from '@/lib/database.types';
+
+type TeacherDepartment = Database['public']['Tables']['teacher_departments']['Row'];
+type TeacherDepartmentInsert = Database['public']['Tables']['teacher_departments']['Insert'];
+type TeacherDepartmentUpdate = Database['public']['Tables']['teacher_departments']['Update'];
+
+export interface TeacherWithDepartments extends Database['public']['Tables']['teachers']['Row'] {
+  teacher_departments?: {
+    id: string;
+    department_id: string;
+    is_primary: boolean;
+    department: {
+      id: string;
+      name: string;
+      code: string | null;
+    };
+  }[];
+}
+
+export interface DepartmentWithTeachers extends Database['public']['Tables']['departments']['Row'] {
+  teacher_departments?: {
+    id: string;
+    teacher_id: string;
+    is_primary: boolean;
+    teacher: {
+      id: string;
+      first_name: string;
+      last_name: string;
+      email: string;
+    };
+  }[];
+}
+
+export interface TeacherQualification {
+  course_id: string;
+  course_name: string;
+  course_code: string | null;
+  department_id: string;
+  department_name: string;
+  grade_level: number;
+  is_primary_department: boolean;
+}
+
+export interface TeacherDepartmentSummary {
+  department_id: string;
+  department_name: string;
+  department_code: string | null;
+  is_primary: boolean;
+  course_count: number;
+  courses: string[];
+}
+
+/**
+ * Get all teacher-department assignments for a school
+ */
+export async function getTeacherDepartments(schoolId: string): Promise<TeacherDepartment[]> {
+  const supabase = createClient();
+  
+  const { data, error } = await supabase
+    .from('teacher_departments')
+    .select(`
+      *,
+      teacher:teachers!teacher_departments_teacher_id_fkey(school_id),
+      department:departments!teacher_departments_department_id_fkey(school_id)
+    `)
+    .eq('teacher.school_id', schoolId)
+    .eq('department.school_id', schoolId);
+
+  if (error) {
+    throw new Error(`Failed to fetch teacher departments: ${error.message}`);
+  }
+
+  return data || [];
+}
+
+/**
+ * Get teachers with their department assignments
+ */
+export async function getTeachersWithDepartments(schoolId: string): Promise<TeacherWithDepartments[]> {
+  const supabase = createClient();
+  
+  const { data, error } = await supabase
+    .from('teachers')
+    .select(`
+      *,
+      teacher_departments (
+        id,
+        department_id,
+        is_primary,
+        department:departments (
+          id,
+          name,
+          code
+        )
+      )
+    `)
+    .eq('school_id', schoolId)
+    .order('first_name');
+
+  if (error) {
+    throw new Error(`Failed to fetch teachers with departments: ${error.message}`);
+  }
+
+  return data || [];
+}
+
+/**
+ * Get departments with their teacher assignments
+ */
+export async function getDepartmentsWithTeachers(schoolId: string): Promise<DepartmentWithTeachers[]> {
+  const supabase = createClient();
+  
+  const { data, error } = await supabase
+    .from('departments')
+    .select(`
+      *,
+      teacher_departments (
+        id,
+        teacher_id,
+        is_primary,
+        teacher:teachers (
+          id,
+          first_name,
+          last_name,
+          email
+        )
+      )
+    `)
+    .eq('school_id', schoolId)
+    .order('name');
+
+  if (error) {
+    throw new Error(`Failed to fetch departments with teachers: ${error.message}`);
+  }
+
+  return data || [];
+}
+
+/**
+ * Assign a teacher to a department
+ */
+export async function assignTeacherToDepartment(
+  teacherId: string, 
+  departmentId: string, 
+  isPrimary: boolean = false
+): Promise<TeacherDepartment> {
+  const supabase = createClient();
+  
+  // If this is a primary assignment, unset other primary assignments for this teacher
+  if (isPrimary) {
+    await supabase
+      .from('teacher_departments')
+      .update({ is_primary: false })
+      .eq('teacher_id', teacherId)
+      .eq('is_primary', true);
+  }
+  
+  const { data, error } = await supabase
+    .from('teacher_departments')
+    .insert({
+      teacher_id: teacherId,
+      department_id: departmentId,
+      is_primary: isPrimary
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to assign teacher to department: ${error.message}`);
+  }
+
+  return data;
+}
+
+/**
+ * Remove a teacher from a department
+ */
+export async function removeTeacherFromDepartment(
+  teacherId: string, 
+  departmentId: string
+): Promise<void> {
+  const supabase = createClient();
+  
+  const { error } = await supabase
+    .from('teacher_departments')
+    .delete()
+    .eq('teacher_id', teacherId)
+    .eq('department_id', departmentId);
+
+  if (error) {
+    throw new Error(`Failed to remove teacher from department: ${error.message}`);
+  }
+}
+
+/**
+ * Update teacher department assignment (e.g., change primary status)
+ */
+export async function updateTeacherDepartment(
+  teacherId: string, 
+  departmentId: string, 
+  updates: Partial<TeacherDepartmentUpdate>
+): Promise<TeacherDepartment> {
+  const supabase = createClient();
+  
+  // If setting as primary, unset other primary assignments
+  if (updates.is_primary) {
+    await supabase
+      .from('teacher_departments')
+      .update({ is_primary: false })
+      .eq('teacher_id', teacherId)
+      .eq('is_primary', true);
+  }
+  
+  const { data, error } = await supabase
+    .from('teacher_departments')
+    .update(updates)
+    .eq('teacher_id', teacherId)
+    .eq('department_id', departmentId)
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to update teacher department: ${error.message}`);
+  }
+
+  return data;
+}
+
+/**
+ * Get teacher qualifications (courses they can teach based on department assignments)
+ */
+export async function getTeacherQualifications(teacherId: string): Promise<TeacherQualification[]> {
+  const supabase = createClient();
+  
+  const { data, error } = await supabase
+    .rpc('get_teacher_qualifications', { p_teacher_id: teacherId });
+
+  if (error) {
+    throw new Error(`Failed to fetch teacher qualifications: ${error.message}`);
+  }
+
+  return data || [];
+}
+
+/**
+ * Get teachers qualified for a specific course
+ */
+export async function getTeachersForCourse(courseId: string): Promise<any[]> {
+  const supabase = createClient();
+  
+  const { data, error } = await supabase
+    .rpc('get_teachers_for_course', { p_course_id: courseId });
+
+  if (error) {
+    throw new Error(`Failed to fetch teachers for course: ${error.message}`);
+  }
+
+  return data || [];
+}
+
+/**
+ * Get teacher department summary
+ */
+export async function getTeacherDepartmentSummary(teacherId: string): Promise<TeacherDepartmentSummary[]> {
+  const supabase = createClient();
+  
+  const { data, error } = await supabase
+    .rpc('get_teacher_department_summary', { p_teacher_id: teacherId });
+
+  if (error) {
+    throw new Error(`Failed to fetch teacher department summary: ${error.message}`);
+  }
+
+  return data || [];
+}
+
+/**
+ * Bulk assign teacher to multiple departments
+ */
+export async function bulkAssignTeacherToDepartments(
+  teacherId: string, 
+  departmentIds: string[], 
+  primaryDepartmentId?: string
+): Promise<TeacherDepartment[]> {
+  const supabase = createClient();
+  
+  // Remove existing assignments
+  await supabase
+    .from('teacher_departments')
+    .delete()
+    .eq('teacher_id', teacherId);
+  
+  // Create new assignments
+  const assignments = departmentIds.map(deptId => ({
+    teacher_id: teacherId,
+    department_id: deptId,
+    is_primary: deptId === primaryDepartmentId
+  }));
+  
+  const { data, error } = await supabase
+    .from('teacher_departments')
+    .insert(assignments)
+    .select();
+
+  if (error) {
+    throw new Error(`Failed to bulk assign teacher to departments: ${error.message}`);
+  }
+
+  return data || [];
+} 

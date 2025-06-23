@@ -3,8 +3,9 @@
 import { useState } from 'react'
 import { Zap, Clock, AlertTriangle, CheckCircle, Loader2, Settings } from 'lucide-react'
 import { useSchoolStats } from '@/hooks/use-school-stats'
-import { useCreateTimetableGeneration } from '@/hooks/use-timetable-generations'
-import { Card, Button, Alert, Text, Group, Stack } from '@mantine/core'
+import { Card, Button, Alert, Text, Group, Stack, Select, NumberInput, Textarea } from '@mantine/core'
+import { useSchoolContext } from '@/hooks/use-school-context'
+import { LoadingSpinner } from '@/components/ui/loading-spinner'
 
 export function TimetableGenerator() {
   const [isGenerating, setIsGenerating] = useState(false)
@@ -17,7 +18,6 @@ export function TimetableGenerator() {
   })
 
   const { data: stats } = useSchoolStats()
-  const createGeneration = useCreateTimetableGeneration()
 
   const readinessCheck = () => {
     const issues = []
@@ -42,11 +42,7 @@ export function TimetableGenerator() {
       await new Promise(resolve => setTimeout(resolve, 3000))
       
       // In a real implementation, this would call the AI generation service
-      await createGeneration.mutateAsync({
-        term_id: 'demo-term-id', // This would come from selected term
-        status: 'completed',
-        notes: `Generated using ${generationSettings.algorithm} algorithm`,
-      })
+      console.log('Generating timetable with settings:', generationSettings)
       
       alert('Timetable generated successfully!')
     } catch (error) {

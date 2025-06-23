@@ -1,60 +1,161 @@
 "use client"
 
 import { useState } from "react"
-import { Card, Title, Text, TextInput, Button, Group, Stack, Modal } from '@mantine/core'
-import { supabase } from "@/lib/supabase"
+import { Card, Title, Text, TextInput, Button, Group, Stack, Modal, Alert, Textarea, NumberInput, Select } from '@mantine/core'
+import { createClient } from '@/utils/supabase/client'
+import { useSchoolContext } from '@/hooks/use-school-context'
 
 interface SchoolCreateModalProps {
-  open: boolean
+  opened: boolean
   onClose: () => void
-  onCreated: (schoolId: string) => void
+  onSuccess?: () => void
 }
 
-export function SchoolCreateModal({ open, onClose, onCreated }: SchoolCreateModalProps) {
-  const [name, setName] = useState("")
+export default function SchoolCreateModal({ opened, onClose, onSuccess }: SchoolCreateModalProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [formData, setFormData] = useState({
+    name: '',
+    address: '',
+    phone: '',
+    email: '',
+    website: '',
+    principal_name: '',
+    sessions_per_day: 8,
+    working_days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+  })
+  const { refreshSchools } = useSchoolContext()
+  const supabase = createClient()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
-    const { data, error } = await supabase
-      .from("schools")
-      .insert([{ name }])
-      .select("id")
-      .single()
-    setLoading(false)
-    if (error) {
-      setError(error.message)
-      return
-    }
-    if (data?.id) {
-      onCreated(data.id)
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('User not authenticated')
+
+      const { data, error } = await supabase
+        .from('schools')
+        .insert({
+          ...formData,
+          user_id: user.id,
+          working_days: formData.working_days
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      console.log('School created:', data)
+      onSuccess?.()
+      refreshSchools?.()
+      onClose()
+      
+      // Reset form
+      setFormData({
+        name: '',
+        address: '',
+        phone: '',
+        email: '',
+        website: '',
+        principal_name: '',
+        sessions_per_day: 8,
+        working_days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+      })
+    } catch (err: any) {
+      console.error('Error creating school:', err)
+      setError(err.message || 'Failed to create school')
+    } finally {
+      setLoading(false)
     }
   }
 
   return (
-    <Modal opened={open} onClose={onClose} title="Create Your School" centered>
+    <Modal opened={opened} onClose={onClose} title="Create New School" size="md">
       <form onSubmit={handleSubmit}>
-        <Stack>
+        <Stack gap="md">
           <TextInput
             label="School Name"
-            placeholder="e.g. Green Valley High School"
-            value={name}
-            onChange={e => setName(e.target.value)}
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             required
-            autoFocus
+            placeholder="Enter school name"
           />
-          {error && <Text c="red" size="sm">{error}</Text>}
-          <Group justify="flex-end" gap="sm">
-            <Button variant="light" onClick={onClose} disabled={loading}>
-              Cancel
-            </Button>
-            <Button type="submit" loading={loading} disabled={!name}>
-              Create School
-            </Button>
-          </Group>
+
+          <Textarea
+            label="Address"
+            value={formData.address}
+            onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+            placeholder="Enter school address"
+            rows={3}
+          />
+
+          <TextInput
+            label="Phone"
+            value={formData.phone}
+            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+            placeholder="Enter phone number"
+          />
+
+          <TextInput
+            label="Email"
+            type="email"
+            value={formData.email}
+            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+            placeholder="Enter email address"
+          />
+
+          <TextInput
+            label="Website"
+            value={formData.website}
+            onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+            placeholder="Enter website URL"
+          />
+
+          <TextInput
+            label="Principal Name"
+            value={formData.principal_name}
+            onChange={(e) => setFormData({ ...formData, principal_name: e.target.value })}
+            placeholder="Enter principal name"
+          />
+
+          <NumberInput
+            label="Sessions per Day"
+            value={formData.sessions_per_day}
+            onChange={(value) => setFormData({ ...formData, sessions_per_day: value || 8 })}
+            min={1}
+            max={12}
+            required
+          />
+
+          <Select
+            label="Working Days"
+            value={formData.working_days}
+            onChange={(value) => setFormData({ ...formData, working_days: value || [] })}
+            data={[
+              { value: 'monday', label: 'Monday' },
+              { value: 'tuesday', label: 'Tuesday' },
+              { value: 'wednesday', label: 'Wednesday' },
+              { value: 'thursday', label: 'Thursday' },
+              { value: 'friday', label: 'Friday' },
+              { value: 'saturday', label: 'Saturday' },
+              { value: 'sunday', label: 'Sunday' }
+            ]}
+            multiple
+            required
+          />
+
+          {error && (
+            <Alert color="red" title="Error">
+              {error}
+            </Alert>
+          )}
+
+          <Button type="submit" loading={loading}>
+            Create School
+          </Button>
         </Stack>
       </form>
     </Modal>

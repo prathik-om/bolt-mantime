@@ -1,0 +1,4 @@
+ALTER TABLE public.schools
+ADD COLUMN start_time TIME WITHOUT TIME ZONE,
+ADD COLUMN end_time TIME WITHOUT TIME ZONE,
+ADD COLUMN period_duration INTEGER;

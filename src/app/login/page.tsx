@@ -1,60 +1,146 @@
 "use client"
 
-import { useState } from "react"
-import { supabase } from "@/lib/supabase"
-import { useRouter } from "next/navigation"
-import { Card, TextInput, PasswordInput, Button, Text, Anchor, Container, Title } from '@mantine/core'
+import { useState } from 'react'
+import { Container, Title, Text, TextInput, PasswordInput, Button, Stack, Alert, Group } from '@mantine/core'
+import { createClient } from '@/utils/supabase/client'
+import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
+  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const supabase = createClient()
+
+  const handleClearSession = async () => {
+    try {
+      await supabase.auth.signOut()
+      console.log('Login - Session cleared')
+      // Force a page reload to clear any cached state
+      window.location.reload()
+    } catch (err) {
+      console.error('Login - Error clearing session:', err)
+    }
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    setError("")
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    setLoading(false)
-    if (error) {
-      setError(error.message)
-    } else {
-      router.push("/")
+    setError(null)
+
+    console.log('Login - Starting login process for:', email)
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+
+      console.log('Login - Supabase response:', { 
+        hasUser: !!data.user, 
+        hasSession: !!data.session, 
+        error: error?.message 
+      })
+
+      if (error) {
+        console.log('Login - Error:', error.message)
+        setError(error.message)
+        return
+      }
+
+      if (data.user) {
+        const redirectTo = searchParams.get('redirectTo') || '/admin/dashboard'
+        console.log('Login - Success, redirecting to:', redirectTo)
+        console.log('Login - User:', data.user.email)
+        console.log('Login - Session:', !!data.session)
+        
+        // Check if session is available
+        if (data.session) {
+          console.log('Login - Session access token:', data.session.access_token ? 'present' : 'missing')
+        }
+        
+        window.location.replace(redirectTo)
+      }
+    } catch (err) {
+      console.error('Login - Unexpected error:', err)
+      setError('An unexpected error occurred')
+    } finally {
+      setLoading(false)
     }
   }
 
   return (
-    <Container size="xs" h="100vh" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <Card padding="xl" radius="md" withBorder w="100%">
-        <Title order={2} ta="center" mb="lg">Log In</Title>
-        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <TextInput
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            required
-          />
-          <PasswordInput
-            placeholder="Password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            required
-          />
-          <Button type="submit" fullWidth loading={loading}>
-            {loading ? "Logging in..." : "Log In"}
-          </Button>
+    <Container size="sm" py="xl">
+      <Stack gap="lg">
+        <div style={{ textAlign: 'center' }}>
+          <Title order={1} mb="xs">Sign In</Title>
+          <Text c="dimmed">Welcome back to Timetable Pro</Text>
+        </div>
+
+        <form onSubmit={handleLogin}>
+          <Stack gap="md">
+            <TextInput
+              label="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              placeholder="Enter your email"
+            />
+
+            <PasswordInput
+              label="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              placeholder="Enter your password"
+            />
+
+            {error && (
+              <Alert color="red" title="Error">
+                {error}
+              </Alert>
+            )}
+
+            <Button 
+              type="submit" 
+              loading={loading}
+              fullWidth
+            >
+              Sign In
+            </Button>
+          </Stack>
         </form>
-        {error && <Text c="red" size="sm" ta="center" mt="md">{error}</Text>}
-        <Text ta="center" size="sm" mt="md">
-          Don't have an account?{' '}
-          <Anchor href="/signup" underline="hover">
-            Sign up
-          </Anchor>
-        </Text>
-      </Card>
+
+        <Group justify="center">
+          <Button 
+            variant="subtle" 
+            size="sm" 
+            onClick={handleClearSession}
+            color="gray"
+          >
+            Clear Session
+          </Button>
+        </Group>
+
+        <Group justify="center">
+          <Text size="sm">
+            Don't have an account?{' '}
+            <Link href="/signup" style={{ color: 'blue', textDecoration: 'underline' }}>
+              Sign up
+            </Link>
+          </Text>
+        </Group>
+
+        <Group justify="center">
+          <Link href="/" style={{ color: 'gray', textDecoration: 'underline' }}>
+            Back to Home
+          </Link>
+        </Group>
+      </Stack>
     </Container>
   )
 }

@@ -1,0 +1,435 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { MoreHorizontal, Plus, Edit, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { createDepartment, updateDepartment, deleteDepartment, checkDepartmentNameExists } from '@/lib/api/departments';
+import type { Database } from "@/types/database";
+
+type Department = Database['public']['Tables']['departments']['Row'];
+
+interface DepartmentWithStats extends Department {
+  teacher_count: number;
+  course_count: number;
+}
+
+interface DepartmentsClientUIProps {
+  initialDepartments: DepartmentWithStats[];
+  schoolId: string;
+}
+
+export const DepartmentsClientUI: React.FC<DepartmentsClientUIProps> = ({ 
+  initialDepartments, 
+  schoolId 
+}) => {
+  const [departments, setDepartments] = useState<DepartmentWithStats[]>(initialDepartments);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [editingDepartment, setEditingDepartment] = useState<DepartmentWithStats | null>(null);
+  const [departmentToDelete, setDepartmentToDelete] = useState<DepartmentWithStats | null>(null);
+  const [formData, setFormData] = useState({
+    name: "",
+    code: "",
+    description: ""
+  });
+  const [formErrors, setFormErrors] = useState<{[key: string]: string}>({});
+
+  // Reset form when modal opens/closes
+  useEffect(() => {
+    if (!isModalOpen) {
+      setFormData({ name: "", code: "", description: "" });
+      setFormErrors({});
+      setEditingDepartment(null);
+    }
+  }, [isModalOpen]);
+
+  const openAddModal = () => {
+    console.log("openAddModal called");
+    console.log("Current modal state:", isModalOpen);
+    setEditingDepartment(null);
+    setFormData({ name: "", code: "", description: "" });
+    setFormErrors({});
+    setIsModalOpen(true);
+    console.log("Modal state should now be true");
+  };
+
+  // Add effect to track modal state changes
+  useEffect(() => {
+    console.log("Modal state changed to:", isModalOpen);
+  }, [isModalOpen]);
+
+  const openEditModal = (department: DepartmentWithStats) => {
+    setEditingDepartment(department);
+    setFormData({
+      name: department.name,
+      code: department.code || "",
+      description: department.description || ""
+    });
+    setFormErrors({});
+    setIsModalOpen(true);
+  };
+
+  const openDeleteModal = (department: DepartmentWithStats) => {
+    setDepartmentToDelete(department);
+    setIsDeleteModalOpen(true);
+  };
+
+  const validateForm = async () => {
+    const errors: { [key: string]: string } = {};
+    
+    if (!formData.name.trim()) {
+      errors.name = "Department name is required";
+    }
+    
+    if (formData.name.trim().length > 100) {
+      errors.name = "Department name must be less than 100 characters";
+    }
+    
+    if (formData.code.trim().length > 20) {
+      errors.code = "Department code must be less than 20 characters";
+    }
+    
+    if (formData.description.trim().length > 500) {
+      errors.description = "Description must be less than 500 characters";
+    }
+
+    // Check for duplicate names
+    if (formData.name.trim() && !errors.name) {
+      try {
+        const exists = await checkDepartmentNameExists(
+          formData.name.trim(), 
+          schoolId, 
+          editingDepartment?.id
+        );
+        if (exists) {
+          errors.name = "A department with this name already exists";
+        }
+      } catch (error) {
+        console.error("Error checking department name:", error);
+      }
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleSubmit = async () => {
+    if (!(await validateForm())) {
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const departmentData = {
+        name: formData.name.trim(),
+        code: formData.code.trim() || null,
+        description: formData.description.trim() || null
+      };
+
+      console.log("Submitting department data:", departmentData);
+
+      if (editingDepartment) {
+        // Update existing department
+        console.log("Updating existing department:", editingDepartment.id);
+        const updatedDepartment = await updateDepartment(editingDepartment.id, departmentData);
+        console.log("Updated department response:", updatedDepartment);
+        
+        setDepartments(prev => prev.map(dept => 
+          dept.id === editingDepartment.id 
+            ? { ...dept, ...updatedDepartment }
+            : dept
+        ));
+        
+        toast.success("Department updated successfully!");
+      } else {
+        // Create new department
+        console.log("Creating new department with school_id:", schoolId);
+        const newDepartment = await createDepartment({ 
+          ...departmentData, 
+          school_id: schoolId 
+        });
+        console.log("New department response:", newDepartment);
+        
+        // Add the new department to the list with default counts
+        const newDepartmentWithStats: DepartmentWithStats = {
+          ...newDepartment,
+          teacher_count: 0,
+          course_count: 0
+        };
+        console.log("New department with stats:", newDepartmentWithStats);
+        
+        setDepartments(prev => {
+          console.log("Previous departments:", prev);
+          const updated = [...prev, newDepartmentWithStats];
+          console.log("Updated departments list:", updated);
+          return updated;
+        });
+        toast.success("Department created successfully!");
+      }
+      
+      setIsModalOpen(false);
+    } catch (error: any) {
+      console.error("Error saving department:", error);
+      toast.error(error.message || "Failed to save department");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!departmentToDelete) return;
+
+    setIsLoading(true);
+    try {
+      await deleteDepartment(departmentToDelete.id);
+      
+      setDepartments(prev => prev.filter(dept => dept.id !== departmentToDelete.id));
+      toast.success("Department deleted successfully!");
+      setIsDeleteModalOpen(false);
+    } catch (error: any) {
+      console.error("Error deleting department:", error);
+      toast.error(error.message || "Failed to delete department");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Header with Add Button */}
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-medium">Departments</h3>
+        <Button onClick={openAddModal} size="sm">
+          <Plus className="mr-2 h-4 w-4" />
+          Add Department
+        </Button>
+      </div>
+
+      {/* Departments Table */}
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Code</TableHead>
+              <TableHead>Teachers</TableHead>
+              <TableHead>Courses</TableHead>
+              <TableHead className="w-[100px]">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {departments.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                  No departments found. Create your first department to get started.
+                </TableCell>
+              </TableRow>
+            ) : (
+              departments.map((department) => (
+                <TableRow key={department.id}>
+                  <TableCell className="font-medium">{department.name}</TableCell>
+                  <TableCell>{department.code || '-'}</TableCell>
+                  <TableCell>{department.teacher_count}</TableCell>
+                  <TableCell>{department.course_count}</TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" className="h-8 w-8 p-0">
+                          <span className="sr-only">Open menu</span>
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openEditModal(department)}>
+                          <Edit className="mr-2 h-4 w-4" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={() => openDeleteModal(department)}
+                          className="text-destructive"
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Custom Modal (replacing problematic Dialog) */}
+      {isModalOpen && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsModalOpen(false);
+            }
+          }}
+        >
+          <div 
+            style={{
+              backgroundColor: 'white',
+              padding: '24px',
+              borderRadius: '8px',
+              maxWidth: '500px',
+              width: '90%',
+              maxHeight: '90vh',
+              overflow: 'auto'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex flex-col space-y-1.5 text-center sm:text-left mb-4">
+              <h2 className="text-lg font-semibold leading-none tracking-tight">
+                {editingDepartment ? "Edit Department" : "Add New Department"}
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                {editingDepartment 
+                  ? "Update the department information below." 
+                  : "Create a new department for your school."
+                }
+              </p>
+            </div>
+            
+            {/* Form */}
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Department Name *</Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="e.g., Mathematics"
+                  className={formErrors.name ? "border-destructive" : ""}
+                />
+                {formErrors.name && (
+                  <p className="text-sm text-destructive">{formErrors.name}</p>
+                )}
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="code">Department Code</Label>
+                <Input
+                  id="code"
+                  value={formData.code}
+                  onChange={(e) => setFormData(prev => ({ ...prev, code: e.target.value }))}
+                  placeholder="e.g., MATH"
+                  className={formErrors.code ? "border-destructive" : ""}
+                />
+                {formErrors.code && (
+                  <p className="text-sm text-destructive">{formErrors.code}</p>
+                )}
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Brief description of the department..."
+                  rows={3}
+                  className={formErrors.description ? "border-destructive" : ""}
+                />
+                {formErrors.description && (
+                  <p className="text-sm text-destructive">{formErrors.description}</p>
+                )}
+              </div>
+            </div>
+            
+            {/* Footer */}
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setIsModalOpen(false)}
+                disabled={isLoading}
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleSubmit} 
+                disabled={isLoading}
+                className="mt-2 sm:mt-0"
+              >
+                {isLoading ? "Saving..." : (editingDepartment ? "Update" : "Create")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Department</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{departmentToDelete?.name}"? 
+              This action cannot be undone and will remove all associated data.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setIsDeleteModalOpen(false)}
+              disabled={isLoading}
+            >
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleDelete}
+              disabled={isLoading}
+            >
+              {isLoading ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}; 

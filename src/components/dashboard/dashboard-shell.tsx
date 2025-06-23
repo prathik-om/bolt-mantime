@@ -1,37 +1,39 @@
 'use client'
 
-import { Navigation } from '@/components/navigation/navigation'
-import { Card } from '@mantine/core'
-import { useState } from 'react'
-import { useSchoolContext } from '@/hooks/use-school-context'
-import { SchoolCreateModal } from './school-create-modal'
+import { cn } from "@/lib/utils"
 
-interface DashboardShellProps {
-  children: React.ReactNode
+interface DashboardShellProps extends React.HTMLAttributes<HTMLDivElement> {}
+
+export function DashboardShell({
+  children,
+  className,
+  ...props
+}: DashboardShellProps) {
+  return (
+    <div className={cn("grid items-start gap-8", className)} {...props}>
+      {children}
+    </div>
+  )
 }
 
-export function DashboardShell({ children }: DashboardShellProps) {
-  const { schoolId, setSchoolId, schoolsLoading } = useSchoolContext()
-  const [showModal, setShowModal] = useState(false)
+interface DashboardHeaderProps extends React.HTMLAttributes<HTMLDivElement> {
+  heading: string
+  text?: string
+  children?: React.ReactNode
+}
 
-  // Show modal if not loading and no schoolId
-  const shouldPrompt = !schoolsLoading && !schoolId
-
+export function DashboardHeader({
+  heading,
+  text,
+  children,
+}: DashboardHeaderProps) {
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Navigation />
-      <main className="lg:ml-64 min-h-screen">
-        <Card shadow="sm" padding="lg" radius="md" withBorder className="max-w-7xl mx-auto">
-          {shouldPrompt && (
-            <SchoolCreateModal
-              open={true}
-              onClose={() => {}}
-              onCreated={id => setSchoolId(id)}
-            />
-          )}
-          {children}
-        </Card>
-      </main>
+    <div className="flex items-center justify-between">
+      <div className="grid gap-1">
+        <h1 className="text-2xl font-bold tracking-tight">{heading}</h1>
+        {text && <p className="text-muted-foreground">{text}</p>}
+      </div>
+      {children}
     </div>
   )
 }

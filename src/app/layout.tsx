@@ -1,7 +1,12 @@
 import '@mantine/core/styles.css'; // Mantine's core styles
+import '@mantine/notifications/styles.css'; // Mantine's notifications styles
 import type { Metadata } from "next";
 import { ColorSchemeScript } from '@mantine/core';
-import { Providers } from '@/components/providers';
+import { MantineProvider } from '@mantine/core';
+import { Notifications } from '@mantine/notifications';
+import { Toaster } from 'sonner';
+import QueryProvider from '@/components/providers/query-provider';
+import { SchoolProvider } from '@/components/providers/school-provider';
 
 export const metadata: Metadata = {
   title: "Timetable Pro",
@@ -14,12 +19,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
-        <ColorSchemeScript />
+        <ColorSchemeScript defaultColorScheme="light" />
       </head>
       <body>
-        <Providers>{children}</Providers>
+        <QueryProvider>
+          <MantineProvider defaultColorScheme="light">
+            <SchoolProvider>
+              <Notifications />
+              <Toaster />
+              {children}
+            </SchoolProvider>
+          </MantineProvider>
+        </QueryProvider>
       </body>
     </html>
   );

@@ -1,7 +1,7 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
-import { supabase } from '@/lib/supabase'
+import { useState, useEffect } from 'react'
+import { createClient } from '@/utils/supabase/client'
 import { useSchoolContext } from './use-school-context'
 
 interface SchoolStats {
@@ -15,47 +15,60 @@ interface SchoolStats {
 
 export function useSchoolStats() {
   const { schoolId, schoolsLoading } = useSchoolContext()
-
-  return useQuery({
-    queryKey: ['school-stats', schoolId],
-    queryFn: async (): Promise<SchoolStats> => {
-      if (!schoolId) {
-        return {
-          teachers: 0,
-          subjects: 0,
-          classSections: 0,
-          timetables: 0,
-          rooms: 0,
-          timeSlots: 0,
-        }
-      }
-
-      const [
-        teachersResult,
-        subjectsResult,
-        classSectionsResult,
-        timetablesResult,
-        roomsResult,
-        timeSlotsResult,
-      ] = await Promise.all([
-        supabase.from('teachers').select('id', { count: 'exact', head: true }).eq('school_id', schoolId).eq('is_active', true),
-        supabase.from('subjects').select('id', { count: 'exact', head: true }).eq('school_id', schoolId).eq('is_active', true),
-        supabase.from('class_sections').select('id', { count: 'exact', head: true }).eq('school_id', schoolId).eq('is_active', true),
-        supabase.from('timetable_generations').select('id', { count: 'exact', head: true }),
-        supabase.from('rooms').select('id', { count: 'exact', head: true }).eq('school_id', schoolId).eq('is_active', true),
-        supabase.from('time_slots').select('id', { count: 'exact', head: true }).eq('school_id', schoolId).eq('is_teaching_period', true),
-      ])
-
-      return {
-        teachers: teachersResult.count || 0,
-        subjects: subjectsResult.count || 0,
-        classSections: classSectionsResult.count || 0,
-        timetables: timetablesResult.count || 0,
-        rooms: roomsResult.count || 0,
-        timeSlots: timeSlotsResult.count || 0,
-      }
-    },
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    enabled: !!schoolId,
+  const [stats, setStats] = useState<SchoolStats>({
+    teachers: 0,
+    subjects: 0,
+    classSections: 0,
+    timetables: 0,
+    rooms: 0,
+    timeSlots: 0,
   })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const supabase = createClient()
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      if (!schoolId) {
+        setLoading(false)
+        return
+      }
+
+      try {
+        const [
+          { count: teachers },
+          { count: subjects },
+          { count: classSections },
+          { count: timetables },
+          { count: rooms },
+          { count: timeSlots }
+        ] = await Promise.all([
+          supabase.from('teachers').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
+          supabase.from('departments').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
+          supabase.from('class_sections').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
+          supabase.from('timetables' as any).select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
+          supabase.from('rooms').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
+          supabase.from('time_slots').select('*', { count: 'exact', head: true }).eq('school_id', schoolId)
+        ])
+
+        setStats({
+          teachers: teachers || 0,
+          subjects: subjects || 0,
+          classSections: classSections || 0,
+          timetables: timetables || 0,
+          rooms: rooms || 0,
+          timeSlots: timeSlots || 0,
+        })
+      } catch (err) {
+        console.error('Error fetching school stats:', err)
+        setError('Failed to load school statistics')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchStats()
+  }, [schoolId, supabase])
+
+  return { stats, loading, error }
 }
