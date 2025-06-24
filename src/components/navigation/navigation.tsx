@@ -23,7 +23,7 @@ const menuItems = [
   { id: 'classes', label: 'Classes', icon: GraduationCap, href: '/classes' },
   { id: 'rooms', label: 'Rooms', icon: Building, href: '/rooms' },
   { id: 'generator', label: 'AI Generator', icon: Zap, href: '/generator' },
-  { id: 'timetables', label: 'Timetables', icon: Calendar, href: '/timetables' },
+  { id: 'timetables', label: 'Timetables', icon: Calendar, href: '/admin/timetables' },
 ]
 
 export function Navigation() {

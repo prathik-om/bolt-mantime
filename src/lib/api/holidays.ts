@@ -1,31 +1,107 @@
-import { createClient } from '@/utils/supabase/server'
-import { Database } from '@/lib/database.types'
+import { createClient } from '@/utils/supabase/client';
+import type { Database } from '@/lib/database.types';
 
-type Holiday = Database['public']['Tables']['holidays']['Row']
-type HolidayInsert = Database['public']['Tables']['holidays']['Insert']
-type HolidayUpdate = Database['public']['Tables']['holidays']['Update']
+export type Holiday = Database['public']['Tables']['holidays']['Row'];
+export type HolidayInsert = Database['public']['Tables']['holidays']['Insert'];
+export type HolidayUpdate = Database['public']['Tables']['holidays']['Update'];
 
-export async function getHolidays(schoolId: string, academicYearId?: string) {
-  const supabase = createClient()
+export async function getHolidays(academicYearId: string): Promise<Holiday[]> {
+  const supabase = createClient();
   
-  let query = supabase
+  const { data, error } = await supabase
     .from('holidays')
     .select('*')
-    .eq('school_id', schoolId)
-    .order('date', { ascending: true })
-
-  if (academicYearId) {
-    query = query.eq('academic_year_id', academicYearId)
-  }
-
-  const { data, error } = await query
-
+    .eq('academic_year_id', academicYearId)
+    .order('date');
+    
   if (error) {
-    console.error('Error fetching holidays:', error)
-    throw new Error('Failed to fetch holidays')
+    console.error('Error fetching holidays:', error);
+    throw new Error('Failed to fetch holidays');
   }
+  
+  return data || [];
+}
 
-  return data
+export async function getHolidaysByAcademicYear(academicYearId: string): Promise<Holiday[]> {
+  const supabase = createClient();
+  
+  const { data, error } = await supabase
+    .from('holidays')
+    .select('*')
+    .eq('academic_year_id', academicYearId)
+    .order('date');
+    
+  if (error) {
+    console.error('Error fetching holidays by academic year:', error);
+    throw new Error('Failed to fetch holidays');
+  }
+  
+  return data || [];
+}
+
+export async function createHoliday(holidayData: HolidayInsert): Promise<Holiday> {
+  const supabase = createClient();
+  
+  const { data, error } = await supabase
+    .from('holidays')
+    .insert(holidayData)
+    .select()
+    .single();
+    
+  if (error) {
+    console.error('Error creating holiday:', error);
+    throw new Error('Failed to create holiday');
+  }
+  
+  return data;
+}
+
+export async function updateHoliday(id: string, holidayData: HolidayUpdate): Promise<Holiday> {
+  const supabase = createClient();
+  
+  const { data, error } = await supabase
+    .from('holidays')
+    .update(holidayData)
+    .eq('id', id)
+    .select()
+    .single();
+    
+  if (error) {
+    console.error('Error updating holiday:', error);
+    throw new Error('Failed to update holiday');
+  }
+  
+  return data;
+}
+
+export async function deleteHoliday(id: string): Promise<void> {
+  const supabase = createClient();
+  
+  const { error } = await supabase
+    .from('holidays')
+    .delete()
+    .eq('id', id);
+    
+  if (error) {
+    console.error('Error deleting holiday:', error);
+    throw new Error('Failed to delete holiday');
+  }
+}
+
+export async function createBulkHolidays(holidays: HolidayInsert[]): Promise<Holiday[]> {
+  const supabase = createClient();
+  
+  const { data, error } = await supabase
+    .from('holidays')
+    .insert(holidays)
+    .select();
+    
+  if (error) {
+    console.error('Error creating bulk holidays:', error);
+    throw new Error('Failed to create holidays');
+  }
+  
+  return data || [];
 }
 
 export async function getHoliday(id: string) {
@@ -45,60 +121,9 @@ export async function getHoliday(id: string) {
   return data
 }
 
-export async function createHoliday(holiday: HolidayInsert) {
-  const supabase = createClient()
-  
-  const { data, error } = await supabase
-    .from('holidays')
-    .insert(holiday)
-    .select()
-    .single()
-
-  if (error) {
-    console.error('Error creating holiday:', error)
-    throw new Error('Failed to create holiday')
-  }
-
-  return data
-}
-
-export async function updateHoliday(id: string, updates: HolidayUpdate) {
-  const supabase = createClient()
-  
-  const { data, error } = await supabase
-    .from('holidays')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single()
-
-  if (error) {
-    console.error('Error updating holiday:', error)
-    throw new Error('Failed to update holiday')
-  }
-
-  return data
-}
-
-export async function deleteHoliday(id: string) {
-  const supabase = createClient()
-  
-  const { error } = await supabase
-    .from('holidays')
-    .delete()
-    .eq('id', id)
-
-  if (error) {
-    console.error('Error deleting holiday:', error)
-    throw new Error('Failed to delete holiday')
-  }
-
-  return true
-}
-
 export async function getHolidaysByDateRange(
-  schoolId: string, 
-  startDate: string, 
+  schoolId: string,
+  startDate: string,
   endDate: string
 ) {
   const supabase = createClient()
@@ -109,11 +134,55 @@ export async function getHolidaysByDateRange(
     .eq('school_id', schoolId)
     .gte('date', startDate)
     .lte('date', endDate)
-    .order('date', { ascending: true })
+    .order('date')
 
   if (error) {
     console.error('Error fetching holidays by date range:', error)
-    throw new Error('Failed to fetch holidays by date range')
+    throw new Error('Failed to fetch holidays')
+  }
+
+  return data
+}
+
+export async function getHolidaysByTerm(
+  schoolId: string,
+  termStartDate: string,
+  termEndDate: string
+) {
+  const supabase = createClient()
+  
+  const { data, error } = await supabase
+    .from('holidays')
+    .select('*')
+    .eq('school_id', schoolId)
+    .gte('date', termStartDate)
+    .lte('date', termEndDate)
+    .order('date')
+
+  if (error) {
+    console.error('Error fetching holidays by term:', error)
+    throw new Error('Failed to fetch holidays')
+  }
+
+  return data
+}
+
+export async function getHolidaysByAcademicYearId(
+  schoolId: string,
+  academicYearId: string
+) {
+  const supabase = createClient()
+  
+  const { data, error } = await supabase
+    .from('holidays')
+    .select('*')
+    .eq('school_id', schoolId)
+    .eq('academic_year_id', academicYearId)
+    .order('date')
+
+  if (error) {
+    console.error('Error fetching holidays by academic year ID:', error)
+    throw new Error('Failed to fetch holidays')
   }
 
   return data

@@ -8,6 +8,7 @@ import type { Database } from '@/lib/database.types'
 type School = Database['public']['Tables']['schools']['Row']
 type SchoolInsert = Database['public']['Tables']['schools']['Insert']
 type SchoolUpdate = Database['public']['Tables']['schools']['Update']
+type AcademicYear = Database['public']['Tables']['academic_years']['Row']
 
 export async function getSchools() {
   const supabase = createClient()
@@ -68,6 +69,7 @@ export async function deleteSchool(id: string) {
 }
 
 export const getSchoolByUserId = async (userId: string): Promise<School | null> => {
+  const supabase = createClient()
   const { data, error } = await supabase
     .from('schools')
     .select('*')
@@ -80,4 +82,20 @@ export const getSchoolByUserId = async (userId: string): Promise<School | null> 
   }
 
   return data;
-}; 
+};
+
+export async function getAcademicYears(schoolId: string): Promise<AcademicYear[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('academic_years')
+    .select('*')
+    .eq('school_id', schoolId)
+    .order('start_date', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching academic years:', error);
+    throw new Error('Failed to fetch academic years');
+  }
+
+  return data || []
+} 

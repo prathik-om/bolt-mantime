@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Container,
   Title,
@@ -14,10 +14,16 @@ import {
   ActionIcon,
   Tooltip,
 } from "@mantine/core";
-import { IconCalendar, IconClock, IconSchool, IconPlus, IconEdit } from "@tabler/icons-react";
+import { IconCalendar, IconClock, IconSchool, IconPlus, IconEdit, IconCoffee, IconCalendarEvent } from "@tabler/icons-react";
 import Link from "next/link";
 import SchoolEditModal from "./SchoolEditModal";
-import type { Database } from "@/types/database";
+import DailyScheduleModal from "./DailyScheduleModal";
+import HolidaysManagementModal from "./HolidaysManagementModal";
+import AcademicYearsManagementModal from "./AcademicYearsManagementModal";
+import TermsManagementModal from "./TermsManagementModal";
+import type { Database } from "@/lib/database.types";
+import { getBreaks } from "@/lib/api/breaks";
+import { getHolidaysByAcademicYearId } from "@/lib/api/holidays";
 
 type School = Database['public']['Tables']['schools']['Row'];
 type AcademicYear = Database['public']['Tables']['academic_years']['Row'];
@@ -45,10 +51,90 @@ const SchoolsClientWrapper: React.FC<SchoolsClientWrapperProps> = ({
 }) => {
   const [currentSchool, setCurrentSchool] = useState<School>(school);
   const [editModalOpened, setEditModalOpened] = useState(false);
+  const [dailyScheduleModalOpened, setDailyScheduleModalOpened] = useState(false);
+  const [holidaysModalOpened, setHolidaysModalOpened] = useState(false);
+  const [academicYearsModalOpened, setAcademicYearsModalOpened] = useState(false);
+  const [termsModalOpened, setTermsModalOpened] = useState(false);
+  const [breaksPreview, setBreaksPreview] = useState<any[]>([]);
+  const [holidaysPreview, setHolidaysPreview] = useState<any[]>([]);
+  const [holidaysLoading, setHolidaysLoading] = useState(false);
 
   const handleSchoolUpdate = (updatedSchool: School) => {
     setCurrentSchool(updatedSchool);
   };
+
+  // Fetch breaks for daily schedule preview
+  useEffect(() => {
+    async function fetchBreaks() {
+      try {
+        const data = await getBreaks(currentSchool.id);
+        setBreaksPreview(data);
+      } catch {
+        setBreaksPreview([]);
+      }
+    }
+    fetchBreaks();
+  }, [currentSchool.id]);
+
+  // Fetch holidays for the first academic year for preview
+  useEffect(() => {
+    async function fetchHolidays() {
+      if (!academicYears || academicYears.length === 0) return;
+      setHolidaysLoading(true);
+      try {
+        const data = await getHolidaysByAcademicYearId(currentSchool.id, academicYears[0].id);
+        setHolidaysPreview(data);
+      } catch {
+        setHolidaysPreview([]);
+      } finally {
+        setHolidaysLoading(false);
+      }
+    }
+    fetchHolidays();
+  }, [currentSchool.id, academicYears]);
+
+  // Helper to generate periods and breaks preview
+  function generateSchedulePreview() {
+    const periods = [];
+    const breaks = breaksPreview || [];
+    const sessionsPerDay = currentSchool.sessions_per_day || 8;
+    const periodDuration = currentSchool.period_duration || 45;
+    let currentTime = currentSchool.start_time || "08:00";
+    function addMinutes(time: string, mins: number) {
+      const [h, m] = time.split(":").map(Number);
+      const date = new Date(2000, 0, 1, h, m);
+      date.setMinutes(date.getMinutes() + mins);
+      return date.toTimeString().slice(0, 5);
+    }
+    let schedule = [];
+    let breakIdx = 0;
+    for (let i = 0; i < sessionsPerDay; i++) {
+      const periodStart = currentTime;
+      const periodEnd = addMinutes(periodStart, periodDuration);
+      schedule.push({
+        type: "period",
+        name: `Period ${i + 1}`,
+        start: periodStart,
+        end: periodEnd,
+      });
+      currentTime = periodEnd;
+      // Insert break if it matches the next slot
+      if (breakIdx < breaks.length) {
+        const br = breaks[breakIdx];
+        if (br.start_time === currentTime) {
+          schedule.push({
+            type: "break",
+            name: br.name,
+            start: br.start_time,
+            end: br.end_time,
+          });
+          currentTime = br.end_time;
+          breakIdx++;
+        }
+      }
+    }
+    return schedule;
+  }
 
   return (
     <Container size="xl" py="md">
@@ -56,7 +142,7 @@ const SchoolsClientWrapper: React.FC<SchoolsClientWrapperProps> = ({
         <div>
           <Title order={1}>School Configuration</Title>
           <Text c="dimmed" mt="xs">
-            Manage your school's academic years, terms, and configuration settings.
+            Manage your school's academic years, terms, daily schedule, holidays, and configuration settings.
           </Text>
         </div>
 
@@ -84,36 +170,6 @@ const SchoolsClientWrapper: React.FC<SchoolsClientWrapperProps> = ({
           </Group>
 
           <Stack gap="md">
-            <Group>
-              <div>
-                <Text size="sm" fw={500}>Start Time</Text>
-                <Text size="sm" c="dimmed">
-                  {currentSchool.start_time || 'Not set'}
-                </Text>
-              </div>
-              <div>
-                <Text size="sm" fw={500}>End Time</Text>
-                <Text size="sm" c="dimmed">
-                  {currentSchool.end_time || 'Not set'}
-                </Text>
-              </div>
-              <div>
-                <Text size="sm" fw={500}>Period Duration</Text>
-                <Text size="sm" c="dimmed">
-                  {currentSchool.period_duration ? `${currentSchool.period_duration} minutes` : 'Not set'}
-                </Text>
-              </div>
-            </Group>
-
-            <Group>
-              <div>
-                <Text size="sm" fw={500}>Sessions per Day</Text>
-                <Text size="sm" c="dimmed">
-                  {currentSchool.sessions_per_day || 'Not set'}
-                </Text>
-              </div>
-            </Group>
-
             <div>
               <Text size="sm" fw={500}>Working Days</Text>
               <Text size="sm" c="dimmed">
@@ -131,12 +187,11 @@ const SchoolsClientWrapper: React.FC<SchoolsClientWrapperProps> = ({
           <Group justify="space-between" mb="md">
             <div>
               <Title order={3}>Academic Years</Title>
-              <Text size="sm" c="dimmed">Manage academic years and terms</Text>
+              <Text size="sm" c="dimmed">Manage academic years and their date ranges</Text>
             </div>
             <Button 
               leftSection={<IconPlus size={16} />}
-              component={Link}
-              href="/admin/academic-years"
+              onClick={() => setAcademicYearsModalOpened(true)}
             >
               Manage Academic Years
             </Button>
@@ -153,7 +208,7 @@ const SchoolsClientWrapper: React.FC<SchoolsClientWrapperProps> = ({
                   <div>
                     <Text fw={500}>{year.name}</Text>
                     <Text size="sm" c="dimmed">
-                      {new Date(year.start_date).toLocaleDateString()} - {new Date(year.end_date).toLocaleDateString()}
+                      {new Date(year.start_date).toISOString().split('T')[0]} - {new Date(year.end_date).toISOString().split('T')[0]}
                     </Text>
                   </div>
                   <Badge color="green" variant="light">
@@ -179,12 +234,11 @@ const SchoolsClientWrapper: React.FC<SchoolsClientWrapperProps> = ({
           <Group justify="space-between" mb="md">
             <div>
               <Title order={3}>Terms</Title>
-              <Text size="sm" c="dimmed">View and manage terms within academic years</Text>
+              <Text size="sm" c="dimmed">Manage terms within academic years</Text>
             </div>
             <Button 
               leftSection={<IconPlus size={16} />}
-              component={Link}
-              href="/admin/terms"
+              onClick={() => setTermsModalOpened(true)}
             >
               Manage Terms
             </Button>
@@ -201,7 +255,7 @@ const SchoolsClientWrapper: React.FC<SchoolsClientWrapperProps> = ({
                   <div>
                     <Text fw={500}>{term.name}</Text>
                     <Text size="sm" c="dimmed">
-                      {term.academic_years?.name} • {new Date(term.start_date).toLocaleDateString()} - {new Date(term.end_date).toLocaleDateString()}
+                      {term.academic_years?.name} • {new Date(term.start_date).toISOString().split('T')[0]} - {new Date(term.end_date).toISOString().split('T')[0]}
                     </Text>
                   </div>
                   <Badge color="blue" variant="light">
@@ -222,6 +276,87 @@ const SchoolsClientWrapper: React.FC<SchoolsClientWrapperProps> = ({
           )}
         </Card>
 
+        {/* Daily Schedule Preview Section */}
+        <Card shadow="sm" padding="lg" radius="md" withBorder>
+          <Group justify="space-between" mb="md">
+            <div>
+              <Title order={3}>Daily Schedule</Title>
+              <Text size="sm" c="dimmed">Preview of today's periods and breaks</Text>
+            </div>
+            <Button 
+              leftSection={<IconClock size={16} />}
+              onClick={() => setDailyScheduleModalOpened(true)}
+            >
+              Manage Daily Schedule
+            </Button>
+          </Group>
+          <Stack gap="sm">
+            {generateSchedulePreview().slice(0, 3).map((item, idx) => (
+              <Group key={idx} justify="space-between" p="sm" style={{ border: '1px solid #eee', borderRadius: '8px' }}>
+                <div>
+                  <Text fw={500}>{item.name}</Text>
+                  <Text size="sm" c="dimmed">{item.start} - {item.end}</Text>
+                </div>
+                <Badge color={item.type === 'period' ? 'blue' : 'orange'} variant="light">
+                  {item.type === 'period' ? 'Period' : 'Break'}
+                </Badge>
+              </Group>
+            ))}
+            {generateSchedulePreview().length > 3 && (
+              <Text size="sm" c="blue" ta="center" style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => setDailyScheduleModalOpened(true)}>
+                +{generateSchedulePreview().length - 3} more periods/breaks
+              </Text>
+            )}
+            {generateSchedulePreview().length === 0 && (
+              <Alert color="blue" title="No Schedule">
+                No daily schedule configured yet.
+              </Alert>
+            )}
+          </Stack>
+        </Card>
+
+        {/* Holidays Preview Section */}
+        <Card shadow="sm" padding="lg" radius="md" withBorder>
+          <Group justify="space-between" mb="md">
+            <div>
+              <Title order={3}>Holidays</Title>
+              <Text size="sm" c="dimmed">Preview of holidays for the current academic year</Text>
+            </div>
+            <Button 
+              leftSection={<IconCalendarEvent size={16} />}
+              onClick={() => setHolidaysModalOpened(true)}
+            >
+              Manage Holidays
+            </Button>
+          </Group>
+          <Stack gap="sm">
+            {holidaysLoading ? (
+              <Text size="sm" c="dimmed">Loading holidays...</Text>
+            ) : holidaysPreview.slice(0, 3).map((holiday, idx) => (
+              <Group key={holiday.id || idx} justify="space-between" p="sm" style={{ border: '1px solid #eee', borderRadius: '8px' }}>
+                <div>
+                  <Text fw={500}>{holiday.name}</Text>
+                  <Text size="sm" c="dimmed">{holiday.date}</Text>
+                  {holiday.reason && (
+                    <Text size="xs" c="dimmed">{holiday.reason}</Text>
+                  )}
+                </div>
+                <Badge color="red" variant="light">Holiday</Badge>
+              </Group>
+            ))}
+            {holidaysPreview.length > 3 && (
+              <Text size="sm" c="dimmed" ta="center">
+                +{holidaysPreview.length - 3} more holidays
+              </Text>
+            )}
+            {holidaysPreview.length === 0 && !holidaysLoading && (
+              <Alert color="blue" title="No Holidays">
+                No holidays configured yet for this academic year.
+              </Alert>
+            )}
+          </Stack>
+        </Card>
+
         {/* Quick Actions */}
         <Card shadow="sm" padding="lg" radius="md" withBorder>
           <Title order={3} mb="md">Quick Actions</Title>
@@ -238,12 +373,43 @@ const SchoolsClientWrapper: React.FC<SchoolsClientWrapperProps> = ({
         </Card>
       </Stack>
 
-      {/* Edit Modal */}
+      {/* Modals */}
       <SchoolEditModal
         school={currentSchool}
         opened={editModalOpened}
         onClose={() => setEditModalOpened(false)}
         onUpdate={handleSchoolUpdate}
+      />
+
+      <DailyScheduleModal
+        opened={dailyScheduleModalOpened}
+        onClose={() => setDailyScheduleModalOpened(false)}
+        schoolId={currentSchool.id}
+        currentSchool={{
+          sessions_per_day: currentSchool.sessions_per_day || 8,
+          start_time: currentSchool.start_time || "08:00",
+          end_time: currentSchool.end_time || "15:30",
+          period_duration: currentSchool.period_duration || 50,
+        }}
+        onSchoolUpdate={handleSchoolUpdate}
+      />
+
+      <HolidaysManagementModal
+        opened={holidaysModalOpened}
+        onClose={() => setHolidaysModalOpened(false)}
+        schoolId={currentSchool.id}
+      />
+
+      <AcademicYearsManagementModal
+        opened={academicYearsModalOpened}
+        onClose={() => setAcademicYearsModalOpened(false)}
+        schoolId={currentSchool.id}
+      />
+
+      <TermsManagementModal
+        opened={termsModalOpened}
+        onClose={() => setTermsModalOpened(false)}
+        schoolId={currentSchool.id}
       />
     </Container>
   );

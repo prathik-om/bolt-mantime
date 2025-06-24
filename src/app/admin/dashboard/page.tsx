@@ -16,32 +16,18 @@ export default async function DashboardPage() {
   }
 
   // Get user profile to check role and school
-  const { data: profile, error: profileError } = await supabase
+  let { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("*")
     .eq("id", user.id)
-    .single();
+    .maybeSingle(); // Use maybeSingle to avoid errors when no profile exists
 
   console.log('Dashboard - Profile check:', { profile: !!profile, error: profileError?.message });
 
-  if (profileError) {
-    return (
-      <Container size="xl" py="md">
-        <Alert color="red" title="Error">
-          Error loading user profile. Please try refreshing the page.
-        </Alert>
-      </Container>
-    );
-  }
-
+  // If no profile exists, redirect to onboarding (don't try to create one here)
   if (!profile) {
-    return (
-      <Container size="xl" py="md">
-        <Alert color="red" title="Profile Not Found">
-          User profile not found. Please contact an administrator.
-        </Alert>
-      </Container>
-    );
+    console.log('Dashboard - No profile found, redirecting to onboarding');
+    redirect('/admin/onboarding');
   }
 
   // Check if user is admin

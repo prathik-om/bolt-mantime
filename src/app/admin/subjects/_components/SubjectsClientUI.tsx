@@ -125,6 +125,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
       name: "",
       code: "",
       department_id: "",
+      grade_level: 9,
       total_hours_per_year: 120,
       hours_distribution_type: "equal" as "equal" | "custom",
       term_hours: {} as Record<string, number>,
@@ -141,6 +142,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
     validate: {
       name: (value) => (!value ? "Subject name is required" : null),
       department_id: (value) => (!value ? "Department is required" : null),
+      grade_level: (value) => (!value || value < 1 || value > 12 ? "Grade level must be between 1 and 12" : null),
       class_offerings: (value) => (value.length === 0 ? "At least one class offering is required" : null),
       total_hours_per_year: (value) => (value < 1 ? "Total hours must be at least 1" : null),
     },
@@ -232,6 +234,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
           name: subject.name,
           code: subject.code || "",
           department_id: subject.department_id,
+          grade_level: subject.grade_level || 9,
           total_hours_per_year: subject.total_hours_per_year || 120,
           hours_distribution_type: (subject.hours_distribution_type as 'equal' | 'custom') || 'equal',
           term_hours: parsedTermHours,
@@ -273,6 +276,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
             name: values.name,
             code: values.code,
             department_id: values.department_id,
+            grade_level: values.grade_level,
             total_hours_per_year: values.total_hours_per_year,
             hours_distribution_type: values.hours_distribution_type,
             term_hours: values.term_hours,
@@ -285,14 +289,18 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
         
         if (error) throw error;
         
-        await assignCourseToClasses(editingSubject.id, values.class_offerings);
-        
-        toast.success("Subject updated successfully!");
+        const result = await assignCourseToClasses(editingSubject.id, values.class_offerings);
+        if (result.success) {
+          toast.success(result.message || "Subject updated successfully!");
+        } else {
+          toast.error(result.message || "Subject updated but class offerings failed");
+        }
       } else {
         const insertData = {
           name: values.name,
           code: values.code,
           department_id: values.department_id,
+          grade_level: values.grade_level,
           total_hours_per_year: values.total_hours_per_year,
           hours_distribution_type: values.hours_distribution_type,
           term_hours: values.term_hours,
@@ -310,10 +318,15 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
         if (error) throw error;
         
         if (data && data[0]) {
-          await assignCourseToClasses(data[0].id, values.class_offerings);
+          const result = await assignCourseToClasses(data[0].id, values.class_offerings);
+          if (result.success) {
+            toast.success(result.message || "Subject added successfully!");
+          } else {
+            toast.error(result.message || "Subject added but class offerings failed");
+          }
+        } else {
+          toast.success("Subject added successfully!");
         }
-        
-        toast.success("Subject added successfully!");
       }
       
       setModalOpen(false);
@@ -857,7 +870,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
                     {...form.getInputProps("code")}
                   />
                 </Grid.Col>
-                <Grid.Col span={12}>
+                <Grid.Col span={6}>
                   <Select
                     label="Department"
                     placeholder="Select a department"
@@ -867,6 +880,17 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
                       label: dept.name 
                     }))}
                     {...form.getInputProps("department_id")}
+                    required
+                  />
+                </Grid.Col>
+                <Grid.Col span={6}>
+                  <NumberInput
+                    label="Grade Level"
+                    placeholder="e.g., 9"
+                    description="Which grade level this subject is designed for"
+                    min={1}
+                    max={12}
+                    {...form.getInputProps("grade_level")}
                     required
                   />
                 </Grid.Col>

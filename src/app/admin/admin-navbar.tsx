@@ -15,6 +15,7 @@ import {
   IconClock,
   IconBrain,
   IconLink,
+  IconTable,
 } from '@tabler/icons-react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
@@ -33,6 +34,7 @@ const links = [
   { icon: IconClock, label: 'Terms', href: '/admin/terms' },
   { icon: IconCalendarTime, label: 'Academic Calendar', href: '/admin/academic-calendar' },
   { icon: IconSparkles, label: 'AI Generator', href: '/admin/generator' },
+  { icon: IconTable, label: 'Timetables', href: '/admin/timetables' },
 ];
 
 export default function AdminNavbar() {

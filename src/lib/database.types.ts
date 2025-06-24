@@ -7,6 +7,31 @@ export type Json =
   | Json[]
 
 export type Database = {
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          query?: string
+          operationName?: string
+          variables?: Json
+          extensions?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       academic_years: {
@@ -34,6 +59,50 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "academic_years_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      breaks: {
+        Row: {
+          created_at: string | null
+          end_time: string
+          id: string
+          is_active: boolean | null
+          name: string
+          school_id: string
+          sequence: number
+          start_time: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          end_time: string
+          id?: string
+          is_active?: boolean | null
+          name: string
+          school_id: string
+          sequence: number
+          start_time: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          end_time?: string
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          school_id?: string
+          sequence?: number
+          start_time?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "breaks_school_id_fkey"
             columns: ["school_id"]
             isOneToOne: false
             referencedRelation: "schools"
@@ -219,24 +288,42 @@ export type Database = {
       }
       holidays: {
         Row: {
+          academic_year_id: string
           date: string
           id: string
           reason: string
-          term_id: string
+          school_id: string
         }
         Insert: {
+          academic_year_id: string
           date: string
           id?: string
           reason: string
-          term_id: string
+          school_id: string
         }
         Update: {
+          academic_year_id?: string
           date?: string
           id?: string
           reason?: string
-          term_id?: string
+          school_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "holidays_academic_year_id_fkey"
+            columns: ["academic_year_id"]
+            isOneToOne: false
+            referencedRelation: "academic_years"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "holidays_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -314,6 +401,13 @@ export type Database = {
             columns: ["teaching_assignment_id"]
             isOneToOne: false
             referencedRelation: "teaching_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_lessons_timeslot_id_fkey"
+            columns: ["timeslot_id"]
+            isOneToOne: false
+            referencedRelation: "time_slots"
             referencedColumns: ["id"]
           },
         ]
@@ -513,18 +607,27 @@ export type Database = {
       }
       teaching_assignments: {
         Row: {
+          assigned_at: string | null
+          assignment_type: string | null
           class_offering_id: string
           id: string
+          school_id: string
           teacher_id: string
         }
         Insert: {
+          assigned_at?: string | null
+          assignment_type?: string | null
           class_offering_id: string
           id?: string
+          school_id: string
           teacher_id: string
         }
         Update: {
+          assigned_at?: string | null
+          assignment_type?: string | null
           class_offering_id?: string
           id?: string
+          school_id?: string
           teacher_id?: string
         }
         Relationships: [
@@ -533,6 +636,13 @@ export type Database = {
             columns: ["class_offering_id"]
             isOneToOne: false
             referencedRelation: "class_offerings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "teaching_assignments_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
             referencedColumns: ["id"]
           },
           {
@@ -610,7 +720,15 @@ export type Database = {
           slot_name?: string | null
           start_time?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "time_slots_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       timetable_generations: {
         Row: {
@@ -637,7 +755,15 @@ export type Database = {
           status?: string
           term_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "timetable_generations_term_id_fkey"
+            columns: ["term_id"]
+            isOneToOne: false
+            referencedRelation: "terms"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
@@ -652,7 +778,7 @@ export type Database = {
     }
     Functions: {
       create_class_section: {
-        Args: { p_school_id: string; p_grade_level: number; p_name: string }
+        Args: { p_name: string; p_school_id: string; p_grade_level: number }
         Returns: string
       }
       delete_class_safely: {
@@ -676,8 +802,8 @@ export type Database = {
       explain_curriculum_structure: {
         Args: Record<PropertyKey, never>
         Returns: {
-          component: string
           purpose: string
+          component: string
           key_fields: string
         }[]
       }
@@ -711,6 +837,18 @@ export type Database = {
           purpose: string
           single_source_of_truth: boolean
           key_relationships: string
+        }[]
+      }
+      get_school_breaks: {
+        Args: { p_school_id: string }
+        Returns: {
+          id: string
+          name: string
+          start_time: string
+          end_time: string
+          sequence: number
+          duration_minutes: number
+          is_active: boolean
         }[]
       }
       get_teacher_department_summary: {
@@ -916,6 +1054,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       day_of_week: [
@@ -931,3 +1072,4 @@ export const Constants = {
     },
   },
 } as const
+

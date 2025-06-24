@@ -77,6 +77,26 @@ const TermsClientUI: React.FC<TermsClientUIProps> = ({
     setLoading(true);
     try {
       if (editingTerm) {
+        // Check for overlapping terms when editing
+        const newStartDate = new Date(values.start_date);
+        const newEndDate = new Date(values.end_date);
+        
+        const overlappingTerms = terms.filter(term => {
+          if (term.id === editingTerm.id) return false; // Skip current term
+          if (term.academic_year_id !== editingTerm.academic_year_id) return false; // Only check same academic year
+          
+          const existingStartDate = new Date(term.start_date);
+          const existingEndDate = new Date(term.end_date);
+          
+          return newStartDate < existingEndDate && newEndDate > existingStartDate;
+        });
+        
+        if (overlappingTerms.length > 0) {
+          const overlappingTermNames = overlappingTerms.map(t => t.name).join(', ');
+          toast.error(`Date range conflicts with existing term(s): ${overlappingTermNames}. Please choose different dates.`);
+          return;
+        }
+        
         // Update
         const { data, error } = await createClient()
           .from("terms")
@@ -114,11 +134,32 @@ const TermsClientUI: React.FC<TermsClientUIProps> = ({
           throw new Error("No academic year found for this school. Please create an academic year first.");
         }
 
+        const academicYearId = academicYears[0].id;
+        
+        // Check for overlapping terms when creating
+        const newStartDate = new Date(values.start_date);
+        const newEndDate = new Date(values.end_date);
+        
+        const overlappingTerms = terms.filter(term => {
+          if (term.academic_year_id !== academicYearId) return false; // Only check same academic year
+          
+          const existingStartDate = new Date(term.start_date);
+          const existingEndDate = new Date(term.end_date);
+          
+          return newStartDate < existingEndDate && newEndDate > existingStartDate;
+        });
+        
+        if (overlappingTerms.length > 0) {
+          const overlappingTermNames = overlappingTerms.map(t => t.name).join(', ');
+          toast.error(`Date range conflicts with existing term(s): ${overlappingTermNames}. Please choose different dates.`);
+          return;
+        }
+
         const insertData = {
           name: values.name,
           start_date: values.start_date,
           end_date: values.end_date,
-          academic_year_id: academicYears[0].id,
+          academic_year_id: academicYearId,
         };
         
         const { data, error } = await createClient()

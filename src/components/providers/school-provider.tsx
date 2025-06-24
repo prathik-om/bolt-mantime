@@ -1,7 +1,8 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import { createClient } from '@/utils/supabase/client'
+import { User } from '@supabase/supabase-js'
 
 interface School {
   id: string
@@ -16,120 +17,122 @@ interface School {
   working_days?: string[]
 }
 
+interface Profile {
+  id: string
+  role: string
+  school_id: string | null
+}
+
 interface SchoolContextType {
-  schools: School[]
-  currentSchool: School | null
+  school: School | null
+  profile: Profile | null
   loading: boolean
   error: string | null
-  refreshSchools: () => void
+  refreshSchool: () => Promise<void>
 }
 
 const SchoolContext = createContext<SchoolContextType | undefined>(undefined)
 
 export function SchoolProvider({ children }: { children: React.ReactNode }) {
-  const [schools, setSchools] = useState<School[]>([])
-  const [currentSchool, setCurrentSchool] = useState<School | null>(null)
+  const [school, setSchool] = useState<School | null>(null)
+  const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [isFetching, setIsFetching] = useState(false)
   const supabase = createClient()
 
-  const fetchSchools = useCallback(async () => {
-    if (isFetching) {
-      return
-    }
-    
-    setIsFetching(true)
-    
+  const fetchSchoolData = async (user: User) => {
     try {
+      // First, try to get the user's profile
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle() // Use maybeSingle to avoid errors when no profile exists
+
+      if (profileError) {
+        console.error('Error fetching profile:', profileError)
+        // Don't set error here - just continue without profile
+      }
+
+      setProfile(profileData)
+
+      // If profile exists and has a school_id, fetch the school
+      if (profileData?.school_id) {
+        const { data: schoolData, error: schoolError } = await supabase
+          .from('schools')
+          .select('*')
+          .eq('id', profileData.school_id)
+          .single()
+
+        if (schoolError) {
+          console.error('Error fetching school:', schoolError)
+          setError('Failed to load school data')
+        } else {
+          setSchool(schoolData)
+        }
+      } else {
+        // No school assigned yet - this is normal for new users
+        setSchool(null)
+      }
+    } catch (err) {
+      console.error('Error in fetchSchoolData:', err)
+      setError('Failed to load user data')
+    }
+  }
+
+  const refreshSchool = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      await fetchSchoolData(user)
+    }
+  }
+
+  useEffect(() => {
+    const fetchData = async () => {
       setLoading(true)
       setError(null)
 
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        setLoading(false)
-        setIsFetching(false)
-        return
-      }
-
-      // Check user's profile for school_id
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('school_id')
-        .eq('id', user.id)
-        .single();
       
-      // Check schools owned by user (user_id)
-      const { data: ownedSchools, error: ownedError } = await supabase
-        .from('schools')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('name');
-
-      if (ownedError) throw ownedError;
-
-      // If profile has school_id, fetch that school
-      let profileSchools: any[] = [];
-      if (profile?.school_id) {
-        const { data: profileSchool, error: profileError } = await supabase
-          .from('schools')
-          .select('*')
-          .eq('id', profile.school_id)
-          .single();
-        
-        if (profileSchool && !profileError) {
-          profileSchools = [profileSchool];
-        }
-      }
-
-      // Combine both
-      const allSchools = [...(ownedSchools || []), ...profileSchools];
-      const uniqueSchools = allSchools.filter((school, index, self) => 
-        index === self.findIndex(s => s.id === school.id)
-      );
-
-      setSchools(uniqueSchools)
-      
-      // Auto-select first school if none selected
-      if (uniqueSchools && uniqueSchools.length > 0) {
-        setCurrentSchool(uniqueSchools[0])
+      if (user) {
+        await fetchSchoolData(user)
       } else {
-        setCurrentSchool(null)
+        setSchool(null)
+        setProfile(null)
       }
-    } catch (err: any) {
-      console.error('Error fetching schools:', err)
-      setError(err.message || 'Failed to load schools')
-    } finally {
+
       setLoading(false)
-      setIsFetching(false)
     }
-  }, [isFetching])
 
-  useEffect(() => {
-    fetchSchools()
-  }, [fetchSchools])
+    fetchData()
 
-  const refreshSchools = () => {
-    fetchSchools()
-  }
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session?.user) {
+          await fetchSchoolData(session.user)
+        } else {
+          setSchool(null)
+          setProfile(null)
+        }
+        setLoading(false)
+      }
+    )
+
+    return () => subscription.unsubscribe()
+  }, [])
 
   return (
-    <SchoolContext.Provider value={{
-      schools,
-      currentSchool,
-      loading,
-      error,
-      refreshSchools
-    }}>
+    <SchoolContext.Provider value={{ school, profile, loading, error, refreshSchool }}>
       {children}
     </SchoolContext.Provider>
   )
 }
 
-export function useSchoolContext() {
+export function useSchool() {
   const context = useContext(SchoolContext)
   if (context === undefined) {
-    throw new Error('useSchoolContext must be used within a SchoolProvider')
+    throw new Error('useSchool must be used within a SchoolProvider')
   }
   return context
 } 

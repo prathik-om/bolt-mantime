@@ -1,23 +1,22 @@
 import type { Database } from '@/lib/database.types'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { handleDatabaseError } from './error-handler'
 
 export type Tables<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Row']
 export type Inserts<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Insert']
 export type Updates<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Update']
 
-// Common error handling
+export const createClient = () => {
+  return createSupabaseClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+}
+
+// Enhanced error handling using the new database error handler
 export const handleSupabaseError = (error: any) => {
-  console.error('Supabase error:', error)
-  
-  if (error?.message) {
-    return error.message
-  }
-  
-  if (error?.error_description) {
-    return error.error_description
-  }
-  
-  return 'An unexpected error occurred'
+  return handleDatabaseError(error)
 }
 
 // Auth helpers

@@ -11,6 +11,7 @@
     "db:generate-types": "supabase gen types typescript --project-id YOUR_PROJECT_ID > src/lib/database.types.ts"
   },
   "dependencies": {
+    "@hello-pangea/dnd": "^18.0.1",
     "@hookform/resolvers": "^5.1.1",
     "@mantine/core": "^8.1.1",
     "@mantine/dates": "^8.1.1",

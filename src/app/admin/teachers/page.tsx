@@ -58,37 +58,14 @@ export default async function TeachersPage() {
     );
   }
 
-  try {
-    // Fetch basic teachers data
-    const { data: teachers, error: teachersError } = await supabase
-      .from("teachers")
-      .select("*")
-      .eq("school_id", schoolId)
-      .order("first_name", { ascending: true });
+  // Fetch teachers for initial render (can be improved with SWR/React Query in client UI)
+  const { data: teachers, error: teachersError } = await supabase
+    .from("teachers")
+    .select("*")
+    .eq("school_id", schoolId)
+    .order("first_name", { ascending: true });
 
-    if (teachersError) {
-      throw teachersError;
-    }
-
-    return (
-      <Container size="xl" py="md">
-        <Stack gap="lg">
-          <div>
-            <Title order={1}>Teacher Management</Title>
-            <Text c="dimmed" mt="xs">
-              Manage teachers and their basic information.
-            </Text>
-          </div>
-          
-          <TeachersClientUI 
-            schoolId={schoolId} 
-            initialTeachers={teachers || []}
-          />
-        </Stack>
-      </Container>
-    );
-  } catch (error) {
-    console.error("Error loading teachers page:", error);
+  if (teachersError) {
     return (
       <Container size="xl" py="md">
         <Alert color="red" title="Error Loading Teachers">
@@ -97,4 +74,21 @@ export default async function TeachersPage() {
       </Container>
     );
   }
+
+  return (
+    <Container size="xl" py="md">
+      <Stack gap="lg">
+        <div>
+          <Title order={1}>Teacher Management</Title>
+          <Text c="dimmed" mt="xs">
+            Manage teachers and their basic information.
+          </Text>
+        </div>
+        <TeachersClientUI 
+          schoolId={schoolId} 
+          initialTeachers={teachers || []}
+        />
+      </Stack>
+    </Container>
+  );
 } 

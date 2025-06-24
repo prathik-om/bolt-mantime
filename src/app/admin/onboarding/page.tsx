@@ -22,7 +22,8 @@ import {
   ThemeIcon,
   Grid,
   NumberInput,
-  Select
+  Select,
+  Checkbox
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
@@ -113,6 +114,36 @@ export default function AdminOnboarding() {
     },
   });
 
+  // Utility function to convert PostgreSQL array objects to JavaScript arrays
+  const convertPostgresArray = (value: any): string[] => {
+    if (!value) return ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+    
+    if (Array.isArray(value)) {
+      return value;
+    }
+    
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+      } catch {
+        return ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+      }
+    }
+    
+    if (typeof value === 'object') {
+      // Handle PostgreSQL array object format {0: 'monday', 1: 'tuesday', ...}
+      try {
+        const values = Object.values(value).filter(val => typeof val === 'string') as string[];
+        return values.length > 0 ? values : ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+      } catch {
+        return ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+      }
+    }
+    
+    return ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+  };
+
   // Custom validation function that only validates the current step
   const validateCurrentStep = () => {
     if (activeStep === 0) {
@@ -145,30 +176,23 @@ export default function AdminOnboarding() {
       if (!user) {
         router.push('/login');
       } else {
-        // Check user role from profiles table
-        const { data: profile, error: profileError } = await createClient()
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single();
-
-        if (profileError || profile?.role !== 'admin') {
-          router.push('/unauthorized');
-        } else {
-          // Test Supabase connection and permissions
-          console.log('Testing Supabase connection...');
-          const { data: testData, error: testError } = await createClient()
-            .from('schools')
-            .select('count')
-            .limit(1);
-          
-          console.log('Connection test result:', { testData, testError });
-          
-          // Load existing data and determine current progress
-          await loadExistingData(user.id);
-          
-          setLoading(false);
-        }
+        // Allow any authenticated user to access onboarding
+        // They will create their profile during the onboarding process
+        console.log('User authenticated, allowing onboarding access');
+        
+        // Test Supabase connection and permissions
+        console.log('Testing Supabase connection...');
+        const { data: testData, error: testError } = await createClient()
+          .from('schools')
+          .select('count')
+          .limit(1);
+        
+        console.log('Connection test result:', { testData, testError });
+        
+        // Load existing data and determine current progress
+        await loadExistingData(user.id);
+        
+        setLoading(false);
       }
     };
     checkAuth();
@@ -194,9 +218,20 @@ export default function AdminOnboarding() {
       if (schools && schools.length > 0) {
         const school = schools[0];
         console.log('Found existing school:', school);
+        console.log('School working_days raw value:', school.working_days);
+        console.log('School working_days type:', typeof school.working_days);
+        console.log('School working_days isArray:', Array.isArray(school.working_days));
         
-        // Populate school form
+        // Populate all school form fields
         form.setFieldValue('school.name', school.name);
+        form.setFieldValue('school.start_time', school.start_time || '08:00');
+        form.setFieldValue('school.end_time', school.end_time || '15:00');
+        form.setFieldValue('school.period_duration', school.period_duration || 45);
+        form.setFieldValue('school.sessions_per_day', school.sessions_per_day || 8);
+        // Set working_days with fallback to default
+        const workingDays = Array.isArray(school.working_days) ? school.working_days : ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+        form.setFieldValue('school.working_days', workingDays);
+        
         setCreatedSchoolId(school.id);
         
         // Check if school has academic years
@@ -281,101 +316,59 @@ export default function AdminOnboarding() {
   };
 
   const handleCreateSchool = async () => {
-    console.log('=== SCHOOL CREATION DEBUG START ===');
     setSaving(true);
     try {
-      console.log('1. Form values:', form.values.school);
-      console.log('2. Form validation errors:', form.errors);
-      
-      const { data: { user } } = await createClient().auth.getUser();
-      console.log('3. Current user:', user);
-      
-      if (!user) {
-        console.log('❌ No user found');
-        toast.error('User not authenticated');
-        return;
-      }
-
-      // Check if user has admin role
-      console.log('4. Checking user profile...');
-      const { data: profile, error: profileError } = await createClient()
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-      
-      console.log('5. Profile check result:', { profile, profileError });
-      
-      if (profileError) {
-        console.log('❌ Profile error:', profileError);
-        toast.error('Error checking user profile');
-        return;
-      }
-      
-      if (!profile || profile.role !== 'admin') {
-        console.log('❌ User is not admin:', profile);
-        toast.error('User does not have admin privileges');
-        return;
-      }
-
-      const schoolData = {
+      console.log('Creating school with data:', {
         name: form.values.school.name,
-        user_id: user.id,
+        working_days: form.values.school.working_days,
         start_time: form.values.school.start_time,
         end_time: form.values.school.end_time,
         period_duration: form.values.school.period_duration,
         sessions_per_day: form.values.school.sessions_per_day,
-        working_days: form.values.school.working_days,
-      };
-      console.log('6. School data to insert:', schoolData);
-
-      console.log('7. About to call Supabase insert...');
-      const { data, error } = await createClient()
+      });
+      
+      const { data: school, error: schoolError } = await createClient()
         .from('schools')
-        .insert(schoolData)
-        .select();
+        .insert({
+          name: form.values.school.name,
+          working_days: form.values.school.working_days,
+          start_time: form.values.school.start_time,
+          end_time: form.values.school.end_time,
+          period_duration: form.values.school.period_duration,
+          sessions_per_day: form.values.school.sessions_per_day,
+          user_id: (await createClient().auth.getUser()).data.user?.id,
+        } as any)
+        .select()
+        .single();
 
-      console.log('8. Supabase response:', { data, error });
-
-      if (error) {
-        console.error('❌ Supabase error details:', {
-          message: error.message,
-          code: error.code,
-          details: error.details,
-          hint: error.hint
+      if (schoolError) throw schoolError;
+      
+      console.log('School created successfully:', school);
+      console.log('Created school working_days:', school.working_days);
+      console.log('Created school working_days type:', typeof school.working_days);
+      console.log('Created school working_days isArray:', Array.isArray(school.working_days));
+      
+      setCreatedSchoolId(school.id);
+      
+      // Create admin profile using the new database function
+      const { data: profile, error: profileError } = await createClient()
+        .rpc('create_admin_profile_with_school', {
+          p_user_id: (await createClient().auth.getUser()).data.user?.id,
+          p_school_id: school.id
         });
-        throw error;
+        
+      if (profileError) {
+        toast.error('Failed to create admin profile');
+        setSaving(false);
+        return;
       }
       
-      console.log('✅ School created successfully:', data);
-      setCreatedSchoolId(data[0].id);
-      toast.success('School created successfully!');
-
-      // After school is created, update the user's profile with school_id
-      const updateProfileResult = await createClient()
-        .from('profiles')
-        .update({ school_id: data[0].id })
-        .eq('id', user.id);
-      if (updateProfileResult.error) {
-        console.error('❌ Error updating profile with school_id:', updateProfileResult.error);
-        toast.error('Failed to link school to your profile. Please contact support.');
-      } else {
-        console.log('✅ Profile updated with school_id:', data[0].id);
-      }
-
-      nextStep();
-    } catch (err: any) {
-      console.error('❌ Error creating school:', err);
-      console.error('❌ Error details:', {
-        message: err.message,
-        code: err.code,
-        details: err.details,
-        hint: err.hint
-      });
-      toast.error(err.message || 'Failed to create school');
+      toast.success('School and admin profile created!');
+      setActiveStep(1);
+    } catch (err) {
+      toast.error('Error creating school');
     } finally {
       setSaving(false);
-      console.log('=== SCHOOL CREATION DEBUG END ===');
     }
   };
 
@@ -457,6 +450,14 @@ export default function AdminOnboarding() {
 
   const getProgress = () => {
     return ((activeStep + 1) / 4) * 100;
+  };
+
+  // After all onboarding steps are complete, redirect to dashboard
+  const finishOnboarding = () => {
+    toast.success('Onboarding complete! Redirecting to dashboard...');
+    setTimeout(() => {
+      router.push('/admin/dashboard');
+    }, 1000);
   };
 
   if (loading) return <div>Loading...</div>;
@@ -587,24 +588,150 @@ export default function AdminOnboarding() {
                     </Grid.Col>
                   </Grid>
 
-                  <Select
-                    label="Working Days"
-                    placeholder="Select working days"
-                    data={[
-                      { value: 'monday', label: 'Monday' },
-                      { value: 'tuesday', label: 'Tuesday' },
-                      { value: 'wednesday', label: 'Wednesday' },
-                      { value: 'thursday', label: 'Thursday' },
-                      { value: 'friday', label: 'Friday' },
-                      { value: 'saturday', label: 'Saturday' },
-                      { value: 'sunday', label: 'Sunday' }
-                    ]}
-                    multiple
-                    value={form.values.school.working_days}
-                    onChange={(value) => form.setFieldValue('school.working_days', value || [])}
-                    required
-                    size="md"
-                  />
+                  {/* Working Days Selection */}
+                  <div>
+                    <Text size="sm" fw={500} mb="xs">
+                      Working Days *
+                    </Text>
+                    <Text size="xs" c="dimmed" mb="md">
+                      Choose the days when your school operates
+                    </Text>
+                    
+                    {/* Quick Actions */}
+                    <Group gap="xs" mb="md">
+                      <Button 
+                        variant="light" 
+                        size="xs"
+                        onClick={() => {
+                          form.setFieldValue('school.working_days', [
+                            'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'
+                          ]);
+                        }}
+                      >
+                        Select All
+                      </Button>
+                      <Button 
+                        variant="light" 
+                        size="xs"
+                        onClick={() => {
+                          form.setFieldValue('school.working_days', []);
+                        }}
+                      >
+                        Clear All
+                      </Button>
+                      <Button 
+                        variant="light" 
+                        size="xs"
+                        onClick={() => {
+                          form.setFieldValue('school.working_days', [
+                            'monday', 'tuesday', 'wednesday', 'thursday', 'friday'
+                          ]);
+                        }}
+                      >
+                        Weekdays Only
+                      </Button>
+                    </Group>
+                    
+                    <Checkbox.Group
+                      value={form.values.school.working_days || []}
+                      onChange={(value) => {
+                        console.log('Working days changed:', value);
+                        form.setFieldValue('school.working_days', value);
+                      }}
+                      error={form.errors.school?.working_days}
+                    >
+                      <Grid>
+                        <Grid.Col span={{ base: 6, sm: 3 }}>
+                          <Checkbox 
+                            value="monday" 
+                            label="Monday"
+                            size="md"
+                          />
+                        </Grid.Col>
+                        <Grid.Col span={{ base: 6, sm: 3 }}>
+                          <Checkbox 
+                            value="tuesday" 
+                            label="Tuesday"
+                            size="md"
+                          />
+                        </Grid.Col>
+                        <Grid.Col span={{ base: 6, sm: 3 }}>
+                          <Checkbox 
+                            value="wednesday" 
+                            label="Wednesday"
+                            size="md"
+                          />
+                        </Grid.Col>
+                        <Grid.Col span={{ base: 6, sm: 3 }}>
+                          <Checkbox 
+                            value="thursday" 
+                            label="Thursday"
+                            size="md"
+                          />
+                        </Grid.Col>
+                        <Grid.Col span={{ base: 6, sm: 3 }}>
+                          <Checkbox 
+                            value="friday" 
+                            label="Friday"
+                            size="md"
+                          />
+                        </Grid.Col>
+                        <Grid.Col span={{ base: 6, sm: 3 }}>
+                          <Checkbox 
+                            value="saturday" 
+                            label="Saturday"
+                            size="md"
+                          />
+                        </Grid.Col>
+                        <Grid.Col span={{ base: 6, sm: 3 }}>
+                          <Checkbox 
+                            value="sunday" 
+                            label="Sunday"
+                            size="md"
+                          />
+                        </Grid.Col>
+                      </Grid>
+                    </Checkbox.Group>
+                  </div>
+
+                  {/* Visual indicator for selected working days */}
+                  {(() => {
+                    const workingDays = form.values.school.working_days || [];
+                    return workingDays.length > 0 ? (
+                      <div style={{ marginTop: '8px' }}>
+                        <Text size="xs" c="dimmed" mb="xs">
+                          Selected: {workingDays.length} day{workingDays.length !== 1 ? 's' : ''}
+                        </Text>
+                        <Group gap="xs">
+                          {workingDays.map((day) => (
+                            <Badge 
+                              key={day} 
+                              variant="light" 
+                              color="blue"
+                              size="sm"
+                            >
+                              {day.charAt(0).toUpperCase() + day.slice(1)}
+                            </Badge>
+                          ))}
+                        </Group>
+                      </div>
+                    ) : (
+                      <div style={{ marginTop: '8px' }}>
+                        <Text size="xs" c="dimmed">
+                          No working days selected
+                        </Text>
+                      </div>
+                    );
+                  })()}
+                  
+                  {/* Debug info - remove this in production */}
+                  {process.env.NODE_ENV === 'development' && false && (
+                    <div style={{ fontSize: '12px', color: '#666', marginTop: '8px' }}>
+                      Debug: working_days type: {typeof form.values.school.working_days}, 
+                      isArray: {Array.isArray(form.values.school.working_days)}, 
+                      value: {JSON.stringify(form.values.school.working_days)}
+                    </div>
+                  )}
 
                   <Group justify="flex-end" mt="md">
                     <Button 
@@ -620,6 +747,17 @@ export default function AdminOnboarding() {
                       }}
                     >
                       {createdSchoolId ? 'Continue' : 'Create School & Continue'}
+                    </Button>
+                    <Button 
+                      variant="light"
+                      onClick={() => {
+                        // Test setting working days manually
+                        console.log('Testing manual working days set');
+                        form.setFieldValue('school.working_days', ['monday', 'wednesday', 'friday']);
+                        console.log('After manual set:', form.values.school.working_days);
+                      }}
+                    >
+                      Test Set Days
                     </Button>
                     <Button 
                       variant="light"
