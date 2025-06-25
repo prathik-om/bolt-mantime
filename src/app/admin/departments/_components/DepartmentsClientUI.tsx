@@ -31,6 +31,7 @@ import { MoreHorizontal, Plus, Edit, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { createDepartment, updateDepartment, deleteDepartment, checkDepartmentNameExists } from '@/lib/api/departments';
 import type { Database } from "@/types/database";
+import { displayError, validateDepartmentForm } from '@/lib/utils/error-handling';
 
 type Department = Database['public']['Tables']['departments']['Row'];
 
@@ -102,102 +103,44 @@ export const DepartmentsClientUI: React.FC<DepartmentsClientUIProps> = ({
   };
 
   const validateForm = async () => {
-    const errors: { [key: string]: string } = {};
-    
-    if (!formData.name.trim()) {
-      errors.name = "Department name is required";
-    }
-    
-    if (formData.name.trim().length > 100) {
-      errors.name = "Department name must be less than 100 characters";
-    }
-    
-    if (formData.code.trim().length > 20) {
-      errors.code = "Department code must be less than 20 characters";
-    }
-    
-    if (formData.description.trim().length > 500) {
-      errors.description = "Description must be less than 500 characters";
-    }
-
-    // Check for duplicate names
-    if (formData.name.trim() && !errors.name) {
-      try {
-        const exists = await checkDepartmentNameExists(
-          formData.name.trim(), 
-          schoolId, 
-          editingDepartment?.id
-        );
-        if (exists) {
-          errors.name = "A department with this name already exists";
-        }
-      } catch (error) {
-        console.error("Error checking department name:", error);
-      }
-    }
-
+    const errors = validateDepartmentForm(formData);
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
     if (!(await validateForm())) {
+      toast.error('Please fix the errors in the form');
       return;
     }
 
     setIsLoading(true);
     try {
-      const departmentData = {
-        name: formData.name.trim(),
-        code: formData.code.trim() || null,
-        description: formData.description.trim() || null
-      };
-
-      console.log("Submitting department data:", departmentData);
-
       if (editingDepartment) {
-        // Update existing department
-        console.log("Updating existing department:", editingDepartment.id);
-        const updatedDepartment = await updateDepartment(editingDepartment.id, departmentData);
-        console.log("Updated department response:", updatedDepartment);
-        
-        setDepartments(prev => prev.map(dept => 
-          dept.id === editingDepartment.id 
-            ? { ...dept, ...updatedDepartment }
-            : dept
-        ));
-        
+        await updateDepartment(editingDepartment.id, formData);
+        setDepartments(prev => 
+          prev.map(dept => 
+            dept.id === editingDepartment.id 
+              ? { ...dept, ...formData }
+              : dept
+          )
+        );
         toast.success("Department updated successfully!");
       } else {
-        // Create new department
-        console.log("Creating new department with school_id:", schoolId);
-        const newDepartment = await createDepartment({ 
-          ...departmentData, 
-          school_id: schoolId 
+        const newDepartment = await createDepartment({
+          ...formData,
+          school_id: schoolId,
         });
-        console.log("New department response:", newDepartment);
-        
-        // Add the new department to the list with default counts
-        const newDepartmentWithStats: DepartmentWithStats = {
-          ...newDepartment,
-          teacher_count: 0,
-          course_count: 0
-        };
-        console.log("New department with stats:", newDepartmentWithStats);
-        
-        setDepartments(prev => {
-          console.log("Previous departments:", prev);
-          const updated = [...prev, newDepartmentWithStats];
-          console.log("Updated departments list:", updated);
-          return updated;
-        });
+        setDepartments(prev => [...prev, newDepartment]);
         toast.success("Department created successfully!");
       }
       
-      setIsModalOpen(false);
+      resetForm();
     } catch (error: any) {
       console.error("Error saving department:", error);
-      toast.error(error.message || "Failed to save department");
+      displayError(error, toast);
     } finally {
       setIsLoading(false);
     }
@@ -215,7 +158,7 @@ export const DepartmentsClientUI: React.FC<DepartmentsClientUIProps> = ({
       setIsDeleteModalOpen(false);
     } catch (error: any) {
       console.error("Error deleting department:", error);
-      toast.error(error.message || "Failed to delete department");
+      displayError(error, toast);
     } finally {
       setIsLoading(false);
     }

@@ -70,6 +70,7 @@ import { createClient } from '@/utils/supabase/client';
 import type { Database } from "@/types/database";
 import { assignCourseToClasses, getCoursesWithClassOfferings } from "@/lib/api/course-class-offerings";
 import { validateTermHours } from "@/lib/utils";
+import { displayError, validateCourseForm } from '@/lib/utils/error-handling';
 
 type Course = Database['public']['Tables']['courses']['Row'];
 type Department = Database['public']['Tables']['departments']['Row'];
@@ -130,7 +131,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
       hours_distribution_type: "equal" as "equal" | "custom",
       term_hours: {} as Record<string, number>,
       class_offerings: [] as Array<{
-        class_id: string;
+        class_section_id: string;
         periods_per_week: number;
         required_hours_per_term: number | null;
       }>,
@@ -140,11 +141,17 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
       min_break_between_sessions: 1,
     },
     validate: {
-      name: (value) => (!value ? "Subject name is required" : null),
-      department_id: (value) => (!value ? "Department is required" : null),
-      grade_level: (value) => (!value || value < 1 || value > 12 ? "Grade level must be between 1 and 12" : null),
+      name: (value) => {
+        const error = validateRequired(value, 'Subject name');
+        if (error) return error;
+        const lengthError = validateLength(value, 'Subject name', 1, 100);
+        if (lengthError) return lengthError;
+        return null;
+      },
+      department_id: (value) => validateRequired(value, 'Department'),
+      grade_level: (value) => validateGradeLevel(value),
       class_offerings: (value) => (value.length === 0 ? "At least one class offering is required" : null),
-      total_hours_per_year: (value) => (value < 1 ? "Total hours must be at least 1" : null),
+      total_hours_per_year: (value) => validatePositiveNumber(value, 'Total hours per year'),
     },
   });
 
@@ -239,7 +246,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
           hours_distribution_type: (subject.hours_distribution_type as 'equal' | 'custom') || 'equal',
           term_hours: parsedTermHours,
           class_offerings: enhancedSubject.class_offerings.map(offering => ({
-            class_id: offering.class_id,
+            class_section_id: offering.class_section_id,
             periods_per_week: offering.periods_per_week,
             required_hours_per_term: offering.required_hours_per_term
           })),
@@ -260,6 +267,15 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
   const handleSubmit = async (values: typeof form.values) => {
     setLoading(true);
     try {
+      // Validate form data
+      const formErrors = validateCourseForm(values);
+      if (Object.keys(formErrors).length > 0) {
+        const firstError = Object.values(formErrors)[0];
+        toast.error(firstError);
+        setLoading(false);
+        return;
+      }
+
       if (values.hours_distribution_type === 'custom') {
         const validation = validateTermHours(values.total_hours_per_year, values.term_hours);
         if (!validation.isValid) {
@@ -296,20 +312,18 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
           toast.error(result.message || "Subject updated but class offerings failed");
         }
       } else {
-        const insertData = {
-          name: values.name,
-          code: values.code,
-          department_id: values.department_id,
-          grade_level: values.grade_level,
-          total_hours_per_year: values.total_hours_per_year,
-          hours_distribution_type: values.hours_distribution_type,
-          term_hours: values.term_hours,
-          school_id: schoolId,
-        };
-        
         const { data, error } = await createClient()
           .from("courses")
-          .insert(insertData)
+          .insert({
+            name: values.name,
+            code: values.code,
+            department_id: values.department_id,
+            grade_level: values.grade_level,
+            total_hours_per_year: values.total_hours_per_year,
+            hours_distribution_type: values.hours_distribution_type,
+            term_hours: values.term_hours,
+            school_id: schoolId,
+          })
           .select(`
             *,
             departments (*)
@@ -320,21 +334,18 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
         if (data && data[0]) {
           const result = await assignCourseToClasses(data[0].id, values.class_offerings);
           if (result.success) {
-            toast.success(result.message || "Subject added successfully!");
+            toast.success(result.message || "Subject created successfully!");
           } else {
-            toast.error(result.message || "Subject added but class offerings failed");
+            toast.error(result.message || "Subject created but class offerings failed");
           }
-        } else {
-          toast.success("Subject added successfully!");
         }
       }
       
       setModalOpen(false);
-      loadEnhancedData();
       router.refresh();
     } catch (err: any) {
       console.error('Error in handleSubmit:', err);
-      toast.error(err.message || "Something went wrong");
+      displayError(err, toast);
     } finally {
       setLoading(false);
     }
@@ -929,7 +940,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
                     }))
                   ]}
                   value={(() => {
-                    const selectedClassIds = form.values.class_offerings.map(o => o.class_id);
+                    const selectedClassIds = form.values.class_offerings.map(o => o.class_section_id);
                     const selectedClasses = classes.filter(cls => selectedClassIds.includes(cls.id));
                     const selectedGradeLevels = [...new Set(selectedClasses.map(cls => cls.grade_level))];
                     
@@ -939,11 +950,11 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
                     return selectedGradeLevels.map(g => g.toString());
                   })()}
                   onChange={(values) => {
-                    let newOfferings: Array<{ class_id: string; periods_per_week: number; required_hours_per_term: number | null }> = [];
+                    let newOfferings: Array<{ class_section_id: string; periods_per_week: number; required_hours_per_term: number | null }> = [];
                     
                     if (values.includes('all')) {
                       newOfferings = classes.map(cls => ({
-                        class_id: cls.id,
+                        class_section_id: cls.id,
                         periods_per_week: 5,
                         required_hours_per_term: null
                       }));
@@ -952,7 +963,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
                       const selectedClasses = classes.filter(cls => selectedGradeLevels.includes(cls.grade_level));
                       
                       newOfferings = selectedClasses.map(cls => ({
-                        class_id: cls.id,
+                        class_section_id: cls.id,
                         periods_per_week: 5,
                         required_hours_per_term: null
                       }));
@@ -968,7 +979,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
                     <Text size="sm" fw={500} mb="md">Class Offering Details</Text>
                     <Stack gap="sm">
                       {form.values.class_offerings.map((offering, index) => {
-                        const classInfo = classes.find(cls => cls.id === offering.class_id);
+                        const classInfo = classes.find(cls => cls.id === offering.class_section_id);
                         return (
                           <Group key={index} position="apart">
                             <Text size="sm">{classInfo?.name || 'Unknown Class'}</Text>

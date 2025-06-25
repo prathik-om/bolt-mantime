@@ -357,7 +357,7 @@ export async function validateTeacherAssignment(
     .from('teaching_assignments')
     .select('id')
     .eq('teacher_id', teacherId)
-    .eq('class_offerings.class_id', classId)
+    .eq('class_offerings.class_section_id', classId)
     .eq('class_offerings.term_id', termId);
 
   if (error) {

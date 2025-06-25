@@ -75,7 +75,7 @@ export default async function ClassOfferingsPage() {
           name
         )
       ),
-      class_sections (
+      classes (
         id,
         name,
         grade_level
@@ -126,7 +126,7 @@ export default async function ClassOfferingsPage() {
 
   // Fetch classes for the form
   const { data: classes, error: classesError } = await (supabase as any)
-    .from("class_sections")
+    .from("classes")
     .select("*")
     .eq("school_id", schoolId)
     .order("grade_level", { ascending: true })
@@ -189,7 +189,7 @@ export default async function ClassOfferingsPage() {
     .eq("school_id", schoolId);
 
   const { count: classesCount } = await (supabase as any)
-    .from("class_sections")
+    .from("classes")
     .select("id", { count: 'exact', head: true })
     .eq("school_id", schoolId);
 
@@ -199,12 +199,12 @@ export default async function ClassOfferingsPage() {
   // Filter out invalid class offerings before passing to the client UI
   const validClassOfferings = (classOfferings || []).filter(
     (offering) =>
-      offering.class_sections &&
-      typeof offering.class_sections === "object" &&
-      !('error' in offering.class_sections) &&
-      "id" in offering.class_sections &&
-      "name" in offering.class_sections &&
-      "grade_level" in offering.class_sections
+      offering.classes &&
+      typeof offering.classes === "object" &&
+      !('error' in offering.classes) &&
+      "id" in offering.classes &&
+      "name" in offering.classes &&
+      "grade_level" in offering.classes
   );
 
   return (

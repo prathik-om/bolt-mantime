@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import AcademicCalendarClientUI from './_components/AcademicCalendarClientUI';
 import { Title, Text, Container, Stack, Alert } from '@mantine/core';
+import { getAcademicYearsWithTerms } from "@/lib/api/academic-calendar";
 
 export default async function AcademicCalendarPage() {
   const supabase = await createClient();
@@ -63,32 +64,21 @@ export default async function AcademicCalendarPage() {
   }
 
   // Fetch academic years with their terms for the user's school
-  const { data: academicYearsWithTerms, error } = await supabase
-    .from('academic_years')
-    .select(`
-      id,
-      name,
-      start_date,
-      end_date,
-      school_id,
-      terms (
-        id,
-        name,
-        start_date,
-        end_date,
-        academic_year_id,
-        period_duration_minutes
-      )
-    `)
-    .eq('school_id', schoolId)
-    .order('start_date', { ascending: false });
+  let academicYearsWithTerms = [];
+  let fetchError = null;
 
-  if (error) {
+  try {
+    academicYearsWithTerms = await getAcademicYearsWithTerms(schoolId);
+  } catch (error: any) {
     console.error("Error fetching academic years:", error);
+    fetchError = error.message;
+  }
+
+  if (fetchError) {
     return (
       <Container size="xl" py="md">
         <Alert color="red" title="Error">
-          Error loading academic calendar data. Please try refreshing the page.
+          Error loading academic calendar data: {fetchError}. Please try refreshing the page.
         </Alert>
       </Container>
     );
@@ -105,7 +95,7 @@ export default async function AcademicCalendarPage() {
         </div>
         
         <AcademicCalendarClientUI 
-          initialAcademicYears={academicYearsWithTerms || []} 
+          initialAcademicYears={academicYearsWithTerms} 
           schoolId={schoolId}
         />
       </Stack>

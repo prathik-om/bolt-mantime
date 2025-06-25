@@ -94,12 +94,20 @@ const handleUniqueConstraintViolation = (message: string): string => {
     return 'An academic year with this name already exists in your school.';
   }
   
+  if (message.includes('academic_years_school_dates_unique')) {
+    return 'Academic year dates overlap with an existing academic year for this school.';
+  }
+  
   if (message.includes('classes_school_id_grade_level_name_key')) {
     return 'A class with this name already exists in this grade level.';
   }
   
   if (message.includes('departments_school_id_name_key')) {
     return 'A department with this name already exists in your school.';
+  }
+  
+  if (message.includes('departments_school_id_code_key')) {
+    return 'A department with this code already exists in your school.';
   }
   
   if (message.includes('courses_school_id_name_key')) {
@@ -134,8 +142,20 @@ const handleUniqueConstraintViolation = (message: string): string => {
     return 'This teacher is already assigned to teach this class offering.';
   }
   
+  if (message.includes('terms_academic_year_name_unique')) {
+    return 'A term with this name already exists in this academic year.';
+  }
+  
+  if (message.includes('terms_academic_year_dates_unique')) {
+    return 'Term dates overlap with an existing term in this academic year.';
+  }
+  
   if (message.includes('holidays_date_key')) {
     return 'A holiday already exists on this date.';
+  }
+  
+  if (message.includes('breaks_term_id_date_key')) {
+    return 'A break already exists on this date for this term.';
   }
   
   return 'This item already exists. Please use a different value.';
@@ -166,6 +186,46 @@ const handleCheckConstraintViolation = (message: string): string => {
     return 'User role must be either "admin" or "teacher".';
   }
   
+  if (message.includes('courses_grade_level_check')) {
+    return 'Grade level must be between 1 and 12.';
+  }
+  
+  if (message.includes('classes_grade_level_check')) {
+    return 'Grade level must be between 1 and 12.';
+  }
+  
+  if (message.includes('teachers_grade_level_check')) {
+    return 'Grade level must be between 1 and 12.';
+  }
+  
+  if (message.includes('class_offerings_periods_per_week_check')) {
+    return 'Periods per week must be between 1 and 20.';
+  }
+  
+  if (message.includes('class_offerings_required_hours_check')) {
+    return 'Required hours per term must be positive.';
+  }
+  
+  if (message.includes('teaching_assignments_hours_per_week_check')) {
+    return 'Hours per week must be between 1 and 40.';
+  }
+  
+  if (message.includes('working_days_config_periods_per_day_check')) {
+    return 'Periods per day must be between 1 and 10.';
+  }
+  
+  if (message.includes('working_days_config_period_duration_check')) {
+    return 'Period duration must be between 15 and 120 minutes.';
+  }
+  
+  if (message.includes('working_days_config_hours_per_day_check')) {
+    return 'Hours per day must be between 1 and 12.';
+  }
+  
+  if (message.includes('working_days_config_working_days_check')) {
+    return 'Working days per week must be between 1 and 7.';
+  }
+  
   return 'The provided data does not meet the required constraints.';
 };
 
@@ -182,12 +242,40 @@ const handleCustomValidationError = (message: string): string => {
     return 'Holiday date must fall within the term dates.';
   }
   
+  if (message.includes('Break date must fall within the term dates')) {
+    return 'Break date must fall within the term dates.';
+  }
+  
   if (message.includes('Scheduled lesson date must fall within the term dates')) {
     return 'Scheduled lesson date must fall within the term dates.';
   }
   
   if (message.includes('Admin users must have a school_id')) {
     return 'Admin users must be associated with a school. Please contact support.';
+  }
+  
+  if (message.includes('Teacher workload exceeds maximum')) {
+    return 'This assignment would exceed the teacher\'s maximum workload. Please reduce hours or assign to another teacher.';
+  }
+  
+  if (message.includes('Class offering hours mismatch')) {
+    return 'The total teaching hours do not match the class offering requirements.';
+  }
+  
+  if (message.includes('Grade level mismatch')) {
+    return 'The grade levels of the class and course do not match.';
+  }
+  
+  if (message.includes('School consistency check failed')) {
+    return 'All items must belong to the same school.';
+  }
+  
+  if (message.includes('Periods per week validation failed')) {
+    return 'The periods per week must be consistent with the course requirements.';
+  }
+  
+  if (message.includes('Working days configuration invalid')) {
+    return 'The working days configuration is invalid. Please check your settings.';
   }
   
   return message;
@@ -246,5 +334,142 @@ export const getErrorSuggestion = (error: any): string | null => {
     
     default:
       return null;
+  }
+};
+
+// Enhanced error handling with field-specific mapping
+export const getFieldError = (error: any): { field?: string; message: string } => {
+  const message = handleDatabaseError(error);
+  
+  // Map common error patterns to specific fields
+  if (error?.message?.includes('name')) {
+    return { field: 'name', message };
+  }
+  
+  if (error?.message?.includes('email')) {
+    return { field: 'email', message };
+  }
+  
+  if (error?.message?.includes('code')) {
+    return { field: 'code', message };
+  }
+  
+  if (error?.message?.includes('start_date') || error?.message?.includes('end_date')) {
+    return { field: 'dates', message };
+  }
+  
+  if (error?.message?.includes('periods_per_week')) {
+    return { field: 'periods_per_week', message };
+  }
+  
+  if (error?.message?.includes('grade_level')) {
+    return { field: 'grade_level', message };
+  }
+  
+  if (error?.message?.includes('department_id')) {
+    return { field: 'department_id', message };
+  }
+  
+  if (error?.message?.includes('teacher_id')) {
+    return { field: 'teacher_id', message };
+  }
+  
+  if (error?.message?.includes('class_section_id')) {
+    return { field: 'class_section_id', message };
+  }
+  
+  if (error?.message?.includes('course_id')) {
+    return { field: 'course_id', message };
+  }
+  
+  return { message };
+};
+
+// Form validation helpers
+export const validateRequired = (value: any, fieldName: string): string | null => {
+  if (!value || (typeof value === 'string' && value.trim() === '')) {
+    return `${fieldName} is required`;
+  }
+  return null;
+};
+
+export const validateLength = (value: string, fieldName: string, min: number, max: number): string | null => {
+  if (value && (value.length < min || value.length > max)) {
+    return `${fieldName} must be between ${min} and ${max} characters`;
+  }
+  return null;
+};
+
+export const validateEmail = (email: string): string | null => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (email && !emailRegex.test(email)) {
+    return 'Please enter a valid email address';
+  }
+  return null;
+};
+
+export const validateDateRange = (startDate: string, endDate: string): string | null => {
+  if (startDate && endDate) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (end <= start) {
+      return 'End date must be after start date';
+    }
+  }
+  return null;
+};
+
+export const validateNumberRange = (value: number, fieldName: string, min: number, max: number): string | null => {
+  if (value < min || value > max) {
+    return `${fieldName} must be between ${min} and ${max}`;
+  }
+  return null;
+};
+
+export const validatePositiveNumber = (value: number, fieldName: string): string | null => {
+  if (value <= 0) {
+    return `${fieldName} must be greater than 0`;
+  }
+  return null;
+};
+
+// Enhanced error display with suggestions
+export const displayError = (error: any, toast: any): void => {
+  const userMessage = handleDatabaseError(error);
+  const suggestion = getErrorSuggestion(error);
+  const errorType = getErrorType(error);
+  
+  let fullMessage = userMessage;
+  if (suggestion) {
+    fullMessage += ` ${suggestion}`;
+  }
+  
+  // Use different toast styles based on error type
+  switch (errorType) {
+    case 'validation':
+      toast.error(fullMessage, {
+        description: 'Please check your input and try again.',
+        duration: 5000,
+      });
+      break;
+    
+    case 'unique':
+      toast.error(fullMessage, {
+        description: 'Please use a different value for this field.',
+        duration: 4000,
+      });
+      break;
+    
+    case 'foreign_key':
+      toast.error(fullMessage, {
+        description: 'The referenced item may have been deleted. Please refresh the page.',
+        duration: 6000,
+      });
+      break;
+    
+    default:
+      toast.error(fullMessage, {
+        duration: 4000,
+      });
   }
 }; 

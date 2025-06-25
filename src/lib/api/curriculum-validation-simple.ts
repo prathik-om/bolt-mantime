@@ -84,7 +84,7 @@ export async function getClassCurriculumSummary(
   const supabase = createClient();
   
   const { data, error } = await supabase.rpc('get_class_section_curriculum_summary', {
-    p_class_id: classId,
+    p_class_section_id: classId,
     p_term_id: termId
   });
 

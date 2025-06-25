@@ -113,7 +113,7 @@ export type Database = {
       class_offerings: {
         Row: {
           assignment_type: string | null
-          class_id: string
+          class_section_id: string
           course_id: string
           id: string
           periods_per_week: number
@@ -122,7 +122,7 @@ export type Database = {
         }
         Insert: {
           assignment_type?: string | null
-          class_id: string
+          class_section_id: string
           course_id: string
           id?: string
           periods_per_week: number
@@ -131,7 +131,7 @@ export type Database = {
         }
         Update: {
           assignment_type?: string | null
-          class_id?: string
+          class_section_id?: string
           course_id?: string
           id?: string
           periods_per_week?: number
@@ -140,8 +140,8 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "class_offerings_class_id_fkey"
-            columns: ["class_id"]
+            foreignKeyName: "class_offerings_class_section_id_fkey"
+            columns: ["class_section_id"]
             isOneToOne: false
             referencedRelation: "classes"
             referencedColumns: ["id"]
@@ -782,7 +782,7 @@ export type Database = {
         Returns: string
       }
       delete_class_safely: {
-        Args: { class_id: string }
+        Args: { class_section_id: string }
         Returns: {
           success: boolean
           message: string
@@ -808,7 +808,7 @@ export type Database = {
         }[]
       }
       get_class_section_curriculum_summary: {
-        Args: { p_class_id: string; p_term_id: string }
+        Args: { p_class_section_id: string; p_term_id: string }
         Returns: {
           total_offerings: number
           total_periods_per_week: number
@@ -886,11 +886,11 @@ export type Database = {
         }[]
       }
       my_function_name: {
-        Args: { p_class_id: string }
+        Args: { p_class_section_id: string }
         Returns: undefined
       }
       preview_class_deletion: {
-        Args: { class_id: string }
+        Args: { class_section_id: string }
         Returns: {
           class_name: string
           offerings_count: number

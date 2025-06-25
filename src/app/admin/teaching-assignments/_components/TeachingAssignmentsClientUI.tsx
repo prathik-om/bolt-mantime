@@ -45,6 +45,8 @@ import { createClient } from '@/utils/supabase/client';
 import { Database } from '@/lib/database.types';
 import TeacherAssignmentForm from '@/components/teacher-assignments/TeacherAssignmentForm';
 import Link from 'next/link';
+import { displayError, validateTeachingAssignmentForm } from '@/lib/utils/error-handling';
+import { useRouter } from 'next/navigation';
 
 type TeachingAssignment = Database['public']['Tables']['teaching_assignments']['Row'];
 type Teacher = Database['public']['Tables']['teachers']['Row'];
@@ -106,6 +108,7 @@ export default function TeachingAssignmentsClientUI({ schoolId, initialStats }: 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const queryClient = useQueryClient();
   const supabase = createClient();
+  const router = useRouter();
 
   // Fetch teaching assignments
   const { data: assignments, isLoading: assignmentsLoading } = useQuery({
@@ -164,12 +167,14 @@ export default function TeachingAssignmentsClientUI({ schoolId, initialStats }: 
   // Delete assignment mutation
   const deleteMutation = useMutation({
     mutationFn: async (assignmentId: string) => {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('teaching_assignments')
         .delete()
-        .eq('id', assignmentId);
+        .eq('id', assignmentId)
+        .select();
       
       if (error) throw error;
+      return data || [];
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['teaching-assignments'] });
@@ -181,14 +186,10 @@ export default function TeachingAssignmentsClientUI({ schoolId, initialStats }: 
         icon: <IconCircleCheck size={16} />
       });
       setIsDeleteModalOpen(false);
+      router.refresh();
     },
     onError: (error) => {
-      notifications.show({
-        title: 'Error',
-        message: 'Failed to delete teaching assignment',
-        color: 'red',
-        icon: <IconAlertCircle size={16} />
-      });
+      displayError(error, notifications);
     }
   });
 
@@ -235,6 +236,112 @@ export default function TeachingAssignmentsClientUI({ schoolId, initialStats }: 
       case 'high': return <IconAlertCircle size={16} />;
       case 'overloaded': return <IconAlertCircle size={16} />;
       default: return <IconClock size={16} />;
+    }
+  };
+
+  const handleSubmit = async (values: typeof form.values) => {
+    setLoading(true);
+    try {
+      // Validate form data
+      const formErrors = validateTeachingAssignmentForm(values);
+      if (Object.keys(formErrors).length > 0) {
+        const firstError = Object.values(formErrors)[0];
+        toast.error(firstError);
+        setLoading(false);
+        return;
+      }
+
+      if (selectedAssignment) {
+        // Update
+        const { data, error } = await supabase
+          .from("teaching_assignments")
+          .update({
+            hours_per_week: values.hours_per_week,
+            assignment_type: values.assignment_type,
+          })
+          .eq("id", selectedAssignment.id)
+          .select(`
+            *,
+            teachers (*),
+            class_offerings (
+              *,
+              classes (*),
+              courses (*)
+            )
+          `);
+        
+        if (error) throw error;
+        
+        // Update local state immediately
+        setSelectedAssignment(prevAssignment => 
+          prevAssignment ? { ...prevAssignment, ...values } : null
+        );
+        
+        toast.success("Teaching assignment updated!");
+      } else {
+        // Insert
+        const insertData = {
+          teacher_id: values.teacher_id,
+          class_offering_id: values.class_offering_id,
+          hours_per_week: values.hours_per_week,
+          assignment_type: values.assignment_type,
+        };
+        
+        const { data, error } = await supabase
+          .from("teaching_assignments")
+          .insert(insertData)
+          .select(`
+            *,
+            teachers (*),
+            class_offerings (
+              *,
+              classes (*),
+              courses (*)
+            )
+          `);
+        
+        if (error) throw error;
+        
+        // Add new assignment to local state immediately
+        if (data && data[0]) {
+          setSelectedAssignment(data[0]);
+        }
+        
+        toast.success("Teaching assignment added!");
+      }
+      setIsFormOpen(false);
+      router.refresh();
+    } catch (err: any) {
+      console.error('Error in handleSubmit:', err);
+      displayError(err, toast);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!selectedAssignment) return;
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("teaching_assignments")
+        .delete()
+        .eq("id", selectedAssignment.id)
+        .select();
+      
+      if (error) throw error;
+      
+      // Remove assignment from local state immediately
+      setSelectedAssignment(null);
+      
+      toast.success("Teaching assignment deleted!");
+      setIsDeleteModalOpen(false);
+      router.refresh();
+    } catch (err: any) {
+      console.error('Error in handleDelete:', err);
+      displayError(err, toast);
+    } finally {
+      setLoading(false);
     }
   };
 

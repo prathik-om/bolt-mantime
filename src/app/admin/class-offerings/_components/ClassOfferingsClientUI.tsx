@@ -40,9 +40,10 @@ import { useRouter } from "next/navigation";
 import { createClient } from '@/utils/supabase/client';
 import type { Database } from "@/types/database";
 import { getCoursesForGrade } from "@/lib/api/course-class-offerings";
+import { displayError, validateClassOfferingForm } from '@/lib/utils/error-handling';
 
 type ClassOffering = Database['public']['Tables']['class_offerings']['Row'] & {
-  class_id?: string;
+  class_section_id?: string;
   manual_assigned_teacher_id?: string | null;
   ai_assigned_teacher_id?: string | null;
   courses: {
@@ -55,7 +56,7 @@ type ClassOffering = Database['public']['Tables']['class_offerings']['Row'] & {
       name: string;
     } | null;
   };
-  class_sections: {
+  classes: {
     id: string;
     name: string;
     grade_level: number;
@@ -124,7 +125,7 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
   const form = useForm({
     initialValues: {
       course_id: "",
-      class_id: "",
+      class_section_id: "",
       term_id: "",
       periods_per_week: 5,
       required_hours_per_term: null as number | null,
@@ -132,14 +133,14 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
     },
     validate: {
       course_id: (value) => (!value ? "Course is required" : null),
-      class_id: (value) => (!value ? "Class is required" : null),
+      class_section_id: (value) => (!value ? "Class is required" : null),
       term_id: (value) => (!value ? "Term is required" : null),
       periods_per_week: (value) => (value < 1 ? "Periods per week must be at least 1" : null),
     },
   });
 
   // Watch for changes in class to filter available courses
-  const watchedClassId = form.values.class_id;
+  const watchedClassId = form.values.class_section_id;
 
   useEffect(() => {
     const updateAvailableCourses = async () => {
@@ -191,7 +192,7 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
     setEditingOffering(offering);
     form.setValues({
       course_id: offering.course_id,
-      class_id: (offering.class_id || offering.class_sections?.id) ?? "",
+      class_section_id: (offering.class_section_id || offering.classes?.id) ?? "",
       term_id: offering.term_id,
       periods_per_week: offering.periods_per_week,
       required_hours_per_term: offering.required_hours_per_term,
@@ -217,7 +218,7 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
             name
           )
         ),
-        class_sections (
+        classes (
           id,
           name,
           grade_level
@@ -237,15 +238,15 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
       toast.error("Failed to fetch class offerings");
       return;
     }
-    // Filter out rows with missing or invalid class_sections
+    // Filter out rows with missing or invalid classes
     const valid = (data || []).filter(
       (offering) =>
-        offering.class_sections &&
-        typeof offering.class_sections === "object" &&
-        !('error' in offering.class_sections) &&
-        "id" in offering.class_sections &&
-        "name" in offering.class_sections &&
-        "grade_level" in offering.class_sections
+        offering.classes &&
+        typeof offering.classes === "object" &&
+        !('error' in offering.classes) &&
+        "id" in offering.classes &&
+        "name" in offering.classes &&
+        "grade_level" in offering.classes
     );
     setClassOfferings(valid as unknown as ClassOffering[]);
   };
@@ -253,46 +254,77 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
   const handleSubmit = async (values: typeof form.values) => {
     setLoading(true);
     try {
+      // Validate form data
+      const formErrors = validateClassOfferingForm(values);
+      if (Object.keys(formErrors).length > 0) {
+        const firstError = Object.values(formErrors)[0];
+        toast.error(firstError);
+        setLoading(false);
+        return;
+      }
+
       if (editingOffering) {
-        // Update existing offering
+        // Update
         const { data, error } = await createClient()
           .from("class_offerings")
           .update({
-            course_id: values.course_id,
-            class_id: values.class_id,
-            term_id: values.term_id,
             periods_per_week: values.periods_per_week,
             required_hours_per_term: values.required_hours_per_term,
-            assignment_type: values.assignment_type,
           })
           .eq("id", editingOffering.id)
-          .select();
+          .select(`
+            *,
+            classes (*),
+            courses (*),
+            terms (*)
+          `);
+        
         if (error) throw error;
-        // Refetch the list after update
-        await fetchClassOfferings();
-        toast.success("Class offering updated successfully");
+        
+        // Update local state immediately
+        setClassOfferings(prevOfferings => 
+          prevOfferings.map(offering => 
+            offering.id === editingOffering.id 
+              ? { ...offering, ...values }
+              : offering
+          )
+        );
+        
+        toast.success("Class offering updated!");
       } else {
-        // Create new offering
+        // Insert
+        const insertData = {
+          course_id: values.course_id,
+          class_section_id: values.class_section_id,
+          term_id: values.term_id,
+          periods_per_week: values.periods_per_week,
+          required_hours_per_term: values.required_hours_per_term,
+        };
+        
         const { data, error } = await createClient()
           .from("class_offerings")
-          .insert({
-            course_id: values.course_id,
-            class_id: values.class_id,
-            term_id: values.term_id,
-            periods_per_week: values.periods_per_week,
-            required_hours_per_term: values.required_hours_per_term,
-            assignment_type: values.assignment_type,
-          } as any)
-          .select();
+          .insert(insertData)
+          .select(`
+            *,
+            classes (*),
+            courses (*),
+            terms (*)
+          `);
+        
         if (error) throw error;
-        // Refetch the list after create
-        await fetchClassOfferings();
-        toast.success("Class offering created successfully");
+        
+        // Add new offering to local state immediately
+        if (data && data[0]) {
+          setClassOfferings(prevOfferings => [...prevOfferings, data[0]]);
+        }
+        
+        toast.success("Class offering added!");
       }
       setModalOpen(false);
       router.refresh();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to save class offering");
+    } catch (err: any) {
+      console.error('Error in handleSubmit:', err);
+      displayError(err, toast);
     } finally {
       setLoading(false);
     }
@@ -302,17 +334,25 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
     if (!confirmDelete) return;
     setLoading(true);
     try {
-      const { error } = await createClient()
+      const { data, error } = await createClient()
         .from("class_offerings")
         .delete()
-        .eq("id", confirmDelete.id);
+        .eq("id", confirmDelete.id)
+        .select();
+      
       if (error) throw error;
-      // Refetch the list after delete
-      await fetchClassOfferings();
-      toast.success("Class offering deleted successfully");
+      
+      // Remove offering from local state immediately
+      setClassOfferings(prevOfferings => 
+        prevOfferings.filter(offering => offering.id !== confirmDelete.id)
+      );
+      
+      toast.success("Class offering deleted!");
       setConfirmDelete(null);
-    } catch (error: any) {
-      toast.error(error.message || "Failed to delete class offering");
+      router.refresh();
+    } catch (err: any) {
+      console.error('Error in handleDelete:', err);
+      displayError(err, toast);
     } finally {
       setLoading(false);
     }
@@ -321,7 +361,7 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
   // Filter offerings based on selected filters
   const filteredOfferings = classOfferings.filter(offering => {
     if (filterTerm !== 'all' && offering.term_id !== filterTerm) return false;
-    if (filterGrade !== 'all' && offering.class_sections.grade_level.toString() !== filterGrade) return false;
+    if (filterGrade !== 'all' && offering.classes.grade_level.toString() !== filterGrade) return false;
     return true;
   });
 
@@ -522,7 +562,7 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
                   </Table.Td>
                   <Table.Td>
                     <Badge variant="light" color="blue">
-                      {offering.class_sections?.name}
+                      {offering.classes?.name}
                     </Badge>
                   </Table.Td>
                   <Table.Td>
@@ -601,7 +641,7 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
                 value: section.id, 
                 label: `${section.name} (Grade ${section.grade_level})` 
               }))}
-              {...form.getInputProps("class_id")}
+              {...form.getInputProps("class_section_id")}
               required
             />
 
@@ -685,7 +725,7 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
         <Stack gap="md">
           <Alert color="red" title="Warning" variant="light" icon={<IconX size={16} />}>
             <Text size="sm">
-              Are you sure you want to delete the class offering "{confirmDelete?.courses?.name} - {confirmDelete?.class_sections?.name}"?
+              Are you sure you want to delete the class offering "{confirmDelete?.courses?.name} - {confirmDelete?.classes?.name}"?
             </Text>
           </Alert>
           

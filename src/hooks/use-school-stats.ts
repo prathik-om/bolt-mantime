@@ -45,7 +45,7 @@ export function useSchoolStats() {
         ] = await Promise.all([
           supabase.from('teachers').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
           supabase.from('departments').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
-          supabase.from('class_sections').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
+          supabase.from('classes').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
           supabase.from('timetables' as any).select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
           supabase.from('rooms').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
           supabase.from('time_slots').select('*', { count: 'exact', head: true }).eq('school_id', schoolId)

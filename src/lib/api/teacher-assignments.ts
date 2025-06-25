@@ -271,7 +271,7 @@ export async function getTeacherAssignmentsByType(
       *,
       courses!inner(school_id, name, department_id),
       teachers(first_name, last_name, email),
-      class_sections(name, grade_level),
+      classes(name, grade_level),
       ai_teacher_assignments(*)
     `)
     .eq('courses.school_id', schoolId)
@@ -350,7 +350,7 @@ export async function getAITeacherAssignments(
       class_offerings!inner(
         *,
         courses(name, department_id),
-        class_sections(name, grade_level)
+        classes(name, grade_level)
       ),
       teachers(first_name, last_name, email)
     `)
@@ -388,7 +388,7 @@ export async function validateTeacherAssignment(
     .eq('teacher_id', teacherId)
     .eq('academic_year_id', academicYearId)
     .eq('term_id', termId)
-    .neq('class_id', classId)
+    .neq('class_section_id', classId)
 
   if (conflictsError) {
     console.error('Error checking conflicts:', conflictsError)

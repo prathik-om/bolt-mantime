@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Card,
   Button,
@@ -15,18 +15,48 @@ import {
   Text,
   Badge,
   Loader,
+  Tabs,
+  NumberInput,
+  Alert,
+  Grid,
+  Paper,
+  Title,
+  RingProgress,
+  Divider,
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { useForm } from "@mantine/form";
-import { IconPlus, IconEdit, IconTrash } from "@tabler/icons-react";
+import { 
+  IconPlus, 
+  IconEdit, 
+  IconTrash, 
+  IconCalendar, 
+  IconClock, 
+  IconSchool,
+  IconBookOpen,
+  IconUsers,
+  IconCalendarEvent,
+  IconInfoCircle,
+  IconCheck,
+  IconX
+} from "@tabler/icons-react";
 import { toast } from "sonner";
-import { createClient } from '@/utils/supabase/client'
-import type { Database } from "@/types/database";
-
-// Types
-export type AcademicYearWithTerms = Database['public']['Tables']['academic_years']['Row'] & {
-  terms: Database['public']['Tables']['terms']['Row'][];
-};
+import { 
+  getAcademicYearsWithTerms,
+  createAcademicYear,
+  updateAcademicYear,
+  deleteAcademicYear,
+  createTerm,
+  updateTerm,
+  deleteTerm,
+  getAcademicCalendarSummary,
+  getCurrentAcademicPeriod,
+  validateAcademicYearDates,
+  validateTermDates,
+  type AcademicYearWithTerms,
+  type AcademicCalendarSummary
+} from "@/lib/api/academic-calendar";
+import { displayError, validateAcademicYearForm, validateTermForm } from '@/lib/utils/error-handling';
 
 interface AcademicCalendarClientUIProps {
   initialAcademicYears: AcademicYearWithTerms[];
@@ -38,14 +68,17 @@ const AcademicCalendarClientUI: React.FC<AcademicCalendarClientUIProps> = ({
   schoolId,
 }) => {
   const [academicYears, setAcademicYears] = useState<AcademicYearWithTerms[]>(initialAcademicYears);
+  const [summary, setSummary] = useState<AcademicCalendarSummary[]>([]);
+  const [currentPeriod, setCurrentPeriod] = useState<any>(null);
   const [yearModalOpen, setYearModalOpen] = useState(false);
   const [termModalOpen, setTermModalOpen] = useState(false);
   const [editingYear, setEditingYear] = useState<AcademicYearWithTerms | null>(null);
-  const [editingTerm, setEditingTerm] = useState<{ term: Database['public']['Tables']['terms']['Row'], yearId: string } | null>(null);
+  const [editingTerm, setEditingTerm] = useState<{ term: any, yearId: string } | null>(null);
   const [confirmDeleteYear, setConfirmDeleteYear] = useState<AcademicYearWithTerms | null>(null);
-  const [confirmDeleteTerm, setConfirmDeleteTerm] = useState<{ term: Database['public']['Tables']['terms']['Row'], yearId: string } | null>(null);
+  const [confirmDeleteTerm, setConfirmDeleteTerm] = useState<{ term: any, yearId: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeYearId, setActiveYearId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<string>("overview");
 
   // Academic Year Form
   const yearForm = useForm({
@@ -67,13 +100,49 @@ const AcademicCalendarClientUI: React.FC<AcademicCalendarClientUIProps> = ({
       name: "",
       start_date: "",
       end_date: "",
+      period_duration_minutes: 50,
     },
     validate: {
       name: (value) => (value.length < 2 ? "Name must be at least 2 characters" : null),
       start_date: (value) => (!value ? "Start date is required" : null),
       end_date: (value) => (!value ? "End date is required" : null),
+      period_duration_minutes: (value) => (value < 30 || value > 120 ? "Period duration must be between 30 and 120 minutes" : null),
     },
   });
+
+  // Load summary data and current period
+  useEffect(() => {
+    loadSummaryData();
+    loadCurrentPeriod();
+  }, []);
+
+  const loadSummaryData = async () => {
+    try {
+      const summaryData = await getAcademicCalendarSummary(schoolId);
+      setSummary(summaryData);
+    } catch (error) {
+      console.error('Failed to load summary data:', error);
+    }
+  };
+
+  const loadCurrentPeriod = async () => {
+    try {
+      const current = await getCurrentAcademicPeriod(schoolId);
+      setCurrentPeriod(current);
+    } catch (error) {
+      console.error('Failed to load current period:', error);
+    }
+  };
+
+  const refreshData = async () => {
+    try {
+      const updatedYears = await getAcademicYearsWithTerms(schoolId);
+      setAcademicYears(updatedYears);
+      await loadSummaryData();
+    } catch (error) {
+      toast.error('Failed to refresh data');
+    }
+  };
 
   // Open modals
   const openAddYearModal = () => {
@@ -81,6 +150,7 @@ const AcademicCalendarClientUI: React.FC<AcademicCalendarClientUIProps> = ({
     yearForm.reset();
     setYearModalOpen(true);
   };
+
   const openEditYearModal = (year: AcademicYearWithTerms) => {
     setEditingYear(year);
     yearForm.setValues({
@@ -90,17 +160,20 @@ const AcademicCalendarClientUI: React.FC<AcademicCalendarClientUIProps> = ({
     });
     setYearModalOpen(true);
   };
+
   const openAddTermModal = (yearId: string) => {
-    setEditingTerm({ term: null as any, yearId });
+    setEditingTerm({ term: null, yearId });
     termForm.reset();
     setTermModalOpen(true);
   };
-  const openEditTermModal = (term: Database['public']['Tables']['terms']['Row'], yearId: string) => {
+
+  const openEditTermModal = (term: any, yearId: string) => {
     setEditingTerm({ term, yearId });
     termForm.setValues({
       name: term.name,
       start_date: term.start_date,
       end_date: term.end_date,
+      period_duration_minutes: term.period_duration_minutes || 50,
     });
     setTermModalOpen(true);
   };
@@ -109,61 +182,59 @@ const AcademicCalendarClientUI: React.FC<AcademicCalendarClientUIProps> = ({
   const handleYearSubmit = async (values: typeof yearForm.values) => {
     setLoading(true);
     try {
+      // Validate form data
+      const formErrors = validateAcademicYearForm(values);
+      if (Object.keys(formErrors).length > 0) {
+        const firstError = Object.values(formErrors)[0];
+        toast.error(firstError);
+        setLoading(false);
+        return;
+      }
+
+      // Validate dates
+      const validation = await validateAcademicYearDates(
+        schoolId,
+        values.start_date,
+        values.end_date,
+        editingYear?.id
+      );
+
+      if (!validation.isValid) {
+        throw new Error(validation.message);
+      }
+
       if (editingYear) {
         // Update
-        const { data, error } = await createClient()
-          .from("academic_years")
-          .update({
-            name: values.name,
-            start_date: values.start_date,
-            end_date: values.end_date,
-          })
-          .eq("id", editingYear.id)
-          .select();
-        if (error) throw error;
-        setAcademicYears((prev) =>
-          prev.map((y) => (y.id === editingYear.id ? { ...y, ...values } : y))
-        );
-        toast.success("Academic year updated!");
+        await updateAcademicYear(editingYear.id, values);
+        toast.success("Academic year updated successfully!");
       } else {
         // Insert
-        const insertData = {
-          name: values.name,
-          start_date: values.start_date,
-          end_date: values.end_date,
+        await createAcademicYear({
+          ...values,
           school_id: schoolId,
-        };
-        const { data, error } = await createClient()
-          .from("academic_years")
-          .insert(insertData)
-          .select("*, terms(*)");
-        if (error) throw error;
-        if (data && data[0]) {
-          setAcademicYears((prev) => [data[0], ...prev]);
-        }
-        toast.success("Academic year added!");
+        });
+        toast.success("Academic year created successfully!");
       }
+      
       setYearModalOpen(false);
+      await refreshData();
     } catch (err: any) {
-      toast.error(err.message || "Something went wrong");
+      displayError(err, toast);
     } finally {
       setLoading(false);
     }
   };
+
   const handleDeleteYear = async () => {
     if (!confirmDeleteYear) return;
     setLoading(true);
     try {
-      const { error } = await createClient()
-        .from("academic_years")
-        .delete()
-        .eq("id", confirmDeleteYear.id);
-      if (error) throw error;
-      setAcademicYears((prev) => prev.filter((y) => y.id !== confirmDeleteYear.id));
-      toast.success("Academic year deleted!");
+      await deleteAcademicYear(confirmDeleteYear.id);
+      toast.success("Academic year deleted successfully!");
       setConfirmDeleteYear(null);
+      await refreshData();
     } catch (err: any) {
-      toast.error(err.message || "Failed to delete academic year");
+      displayError(err, toast);
     } finally {
       setLoading(false);
     }
@@ -173,218 +244,405 @@ const AcademicCalendarClientUI: React.FC<AcademicCalendarClientUIProps> = ({
   const handleTermSubmit = async (values: typeof termForm.values) => {
     setLoading(true);
     try {
+      if (!editingTerm) return;
+
+      // Validate form data
+      const formErrors = validateTermForm(values);
+      if (Object.keys(formErrors).length > 0) {
+        const firstError = Object.values(formErrors)[0];
+        toast.error(firstError);
+        setLoading(false);
+        return;
+      }
+
       // Validate dates
-      const startDate = new Date(values.start_date);
-      const endDate = new Date(values.end_date);
-      
-      if (endDate <= startDate) {
-        throw new Error("End date must be after start date");
+      const validation = await validateTermDates(
+        editingTerm.yearId,
+        values.start_date,
+        values.end_date,
+        editingTerm.term?.id
+      );
+
+      if (!validation.isValid) {
+        throw new Error(validation.message);
       }
 
-      if (editingTerm && editingTerm.term) {
+      if (editingTerm.term) {
         // Update
-        const { data, error } = await createClient()
-          .from("terms")
-          .update({
-            name: values.name,
-            start_date: values.start_date,
-            end_date: values.end_date,
-          })
-          .eq("id", editingTerm.term.id)
-          .select();
-        if (error) {
-          if (error.code === '23505') {
-            throw new Error("A term with this name already exists in this academic year");
-          }
-          throw error;
-        }
-        setAcademicYears((prev) =>
-          prev.map((y) =>
-            y.id === editingTerm.yearId
-              ? {
-                  ...y,
-                  terms: y.terms.map((t) =>
-                    t.id === editingTerm.term.id ? { ...t, ...values } : t
-                  ),
-                }
-              : y
-          )
-        );
-        toast.success("Term updated!");
-      } else if (editingTerm) {
-        // Check for duplicate term names in the same academic year
-        const existingTerms = academicYears
-          .find(y => y.id === editingTerm.yearId)
-          ?.terms || [];
-        
-        const duplicateTerm = existingTerms.find(t => 
-          t.name.toLowerCase() === values.name.toLowerCase()
-        );
-        
-        if (duplicateTerm) {
-          throw new Error("A term with this name already exists in this academic year");
-        }
-
+        await updateTerm(editingTerm.term.id, values);
+        toast.success("Term updated successfully!");
+      } else {
         // Insert
-        const insertData = {
-          name: values.name,
-          start_date: values.start_date,
-          end_date: values.end_date,
+        await createTerm({
+          ...values,
           academic_year_id: editingTerm.yearId,
-        };
-        const { data, error } = await createClient()
-          .from("terms")
-          .insert(insertData)
-          .select();
-        if (error) {
-          if (error.code === '23505') {
-            throw new Error("A term with this name already exists in this academic year");
-          }
-          throw error;
-        }
-        if (data && data[0]) {
-          setAcademicYears((prev) =>
-            prev.map((y) =>
-              y.id === editingTerm.yearId
-                ? { ...y, terms: [data[0], ...y.terms] }
-                : y
-            )
-          );
-        }
-        toast.success("Term added!");
+        });
+        toast.success("Term created successfully!");
       }
+      
       setTermModalOpen(false);
+      await refreshData();
     } catch (err: any) {
-      console.error('Term operation error:', err);
-      toast.error(err.message || "Something went wrong");
+      displayError(err, toast);
     } finally {
       setLoading(false);
     }
   };
+
   const handleDeleteTerm = async () => {
     if (!confirmDeleteTerm) return;
     setLoading(true);
     try {
-      const { error } = await createClient()
-        .from("terms")
-        .delete()
-        .eq("id", confirmDeleteTerm.term.id);
-      if (error) throw error;
-      setAcademicYears((prev) =>
-        prev.map((y) =>
-          y.id === confirmDeleteTerm.yearId
-            ? { ...y, terms: y.terms.filter((t) => t.id !== confirmDeleteTerm.term.id) }
-            : y
-        )
-      );
-      toast.success("Term deleted!");
+      await deleteTerm(confirmDeleteTerm.term.id);
+      toast.success("Term deleted successfully!");
       setConfirmDeleteTerm(null);
+      await refreshData();
     } catch (err: any) {
-      toast.error(err.message || "Failed to delete term");
+      displayError(err, toast);
     } finally {
       setLoading(false);
     }
   };
 
-  // Helpers
+  // Utility functions
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString();
   };
 
+  const calculateDuration = (startDate: string, endDate: string) => {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const weeks = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 7));
+    return `${weeks} weeks`;
+  };
+
+  const isCurrentPeriod = (year: AcademicYearWithTerms) => {
+    if (!currentPeriod?.academicYear) return false;
+    return year.id === currentPeriod.academicYear.id;
+  };
+
+  const isCurrentTerm = (term: any) => {
+    if (!currentPeriod?.term) return false;
+    return term.id === currentPeriod.term.id;
+  };
+
   return (
-    <Card shadow="sm" padding="lg" radius="md" withBorder>
-      <Group justify="space-between" mb="md">
-        <h2>Academic Calendar</h2>
-        <Button leftSection={<IconPlus size={18} />} onClick={openAddYearModal}>
-          Add Academic Year
-        </Button>
-      </Group>
-      <Accordion value={activeYearId} onChange={setActiveYearId} multiple={false}>
-        {academicYears.length === 0 ? (
-          <Accordion.Item value="empty">
-            <Accordion.Control>No academic years found.</Accordion.Control>
-            <Accordion.Panel>
-              <Text c="dimmed">Add an academic year to get started.</Text>
-            </Accordion.Panel>
-          </Accordion.Item>
-        ) : (
-          academicYears.map((year) => (
-            <Accordion.Item value={year.id} key={year.id}>
-              <Accordion.Control>
-                <Group justify="space-between">
-                  <Stack gap={0}>
-                    <Text fw={500}>{year.name}</Text>
-                    <Text size="xs" c="dimmed">
-                      {formatDate(year.start_date)} - {formatDate(year.end_date)}
-                    </Text>
-                  </Stack>
-                  <Group gap="xs">
-                    <Tooltip label="Edit Academic Year">
-                      <ActionIcon variant="light" color="blue" onClick={(e) => { e.stopPropagation(); openEditYearModal(year); }}>
-                        <IconEdit size={18} />
-                      </ActionIcon>
-                    </Tooltip>
-                    <Tooltip label="Delete Academic Year">
-                      <ActionIcon variant="light" color="red" onClick={(e) => { e.stopPropagation(); setConfirmDeleteYear(year); }}>
-                        <IconTrash size={18} />
-                      </ActionIcon>
-                    </Tooltip>
+    <Tabs value={activeTab} onChange={(value) => setActiveTab(value || "overview")}>
+      <Tabs.List>
+        <Tabs.Tab value="overview" leftSection={<IconCalendar size={16} />}>
+          Overview
+        </Tabs.Tab>
+        <Tabs.Tab value="calendar" leftSection={<IconCalendarEvent size={16} />}>
+          Academic Calendar
+        </Tabs.Tab>
+        <Tabs.Tab value="terms" leftSection={<IconBookOpen size={16} />}>
+          Terms Management
+        </Tabs.Tab>
+      </Tabs.List>
+
+      <Tabs.Panel value="overview" pt="md">
+        <Stack gap="lg">
+          {/* Current Period Status */}
+          {currentPeriod && (
+            <Card shadow="sm" padding="lg" radius="md" withBorder>
+              <Title order={3} mb="md">Current Academic Period</Title>
+              <Grid>
+                <Grid.Col span={6}>
+                  <Paper p="md" withBorder>
+                    <Group>
+                      <IconSchool size={24} color="blue" />
+                      <div>
+                        <Text size="sm" c="dimmed">Academic Year</Text>
+                        <Text fw={500}>
+                          {currentPeriod.academicYear?.name || 'No active academic year'}
+                        </Text>
+                      </div>
+                    </Group>
+                  </Paper>
+                </Grid.Col>
+                <Grid.Col span={6}>
+                  <Paper p="md" withBorder>
+                    <Group>
+                      <IconBookOpen size={24} color="green" />
+                      <div>
+                        <Text size="sm" c="dimmed">Current Term</Text>
+                        <Text fw={500}>
+                          {currentPeriod.term?.name || 'No active term'}
+                        </Text>
+                      </div>
+                    </Group>
+                  </Paper>
+                </Grid.Col>
+              </Grid>
+            </Card>
+          )}
+
+          {/* Summary Statistics */}
+          <Card shadow="sm" padding="lg" radius="md" withBorder>
+            <Title order={3} mb="md">Academic Calendar Summary</Title>
+            <Grid>
+              {summary.map((yearSummary) => (
+                <Grid.Col key={yearSummary.academic_year_id} span={4}>
+                  <Paper p="md" withBorder>
+                    <Stack gap="xs">
+                      <Text fw={500} size="sm">{yearSummary.academic_year_name}</Text>
+                      <Group gap="xs">
+                        <Badge size="sm" variant="light">
+                          {yearSummary.term_count} Terms
+                        </Badge>
+                        <Badge size="sm" variant="light">
+                          {yearSummary.total_weeks} Weeks
+                        </Badge>
+                      </Group>
+                      <RingProgress
+                        size={60}
+                        thickness={4}
+                        sections={[
+                          { 
+                            value: yearSummary.class_offerings_count > 0 ? 100 : 0, 
+                            color: 'blue' 
+                          }
+                        ]}
+                        label={
+                          <Text ta="center" size="xs">
+                            {yearSummary.class_offerings_count}
+                          </Text>
+                        }
+                      />
+                      <Text size="xs" c="dimmed">Class Offerings</Text>
+                    </Stack>
+                  </Paper>
+                </Grid.Col>
+              ))}
+            </Grid>
+          </Card>
+        </Stack>
+      </Tabs.Panel>
+
+      <Tabs.Panel value="calendar" pt="md">
+        <Card shadow="sm" padding="lg" radius="md" withBorder>
+          <Group justify="space-between" mb="md">
+            <div>
+              <Title order={3}>Academic Calendar</Title>
+              <Text c="dimmed" size="sm">
+                Manage academic years and their terms
+              </Text>
+            </div>
+            <Button leftSection={<IconPlus size={18} />} onClick={openAddYearModal}>
+              Add Academic Year
+            </Button>
+          </Group>
+
+          <Accordion value={activeYearId} onChange={setActiveYearId} multiple={false}>
+            {academicYears.length === 0 ? (
+              <Accordion.Item value="empty">
+                <Accordion.Control>
+                  <Group justify="space-between">
+                    <Text>No academic years found</Text>
+                    <Badge color="gray" variant="light">Empty</Badge>
                   </Group>
-                </Group>
-              </Accordion.Control>
-              <Accordion.Panel>
-                <Group justify="space-between" mb="xs">
-                  <Text fw={500}>Terms</Text>
-                  <Button leftSection={<IconPlus size={16} />} size="xs" onClick={() => openAddTermModal(year.id)}>
-                    Add Term
-                  </Button>
-                </Group>
-                <Table striped highlightOnHover withTableBorder>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>Name</Table.Th>
-                      <Table.Th>Start Date</Table.Th>
-                      <Table.Th>End Date</Table.Th>
-                      <Table.Th>Actions</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {year.terms.length === 0 ? (
-                      <Table.Tr>
-                        <Table.Td colSpan={4} align="center">
-                          <Text c="dimmed">No terms found for this year.</Text>
-                        </Table.Td>
-                      </Table.Tr>
-                    ) : (
-                      year.terms.map((term) => (
-                        <Table.Tr key={term.id}>
-                          <Table.Td>{term.name}</Table.Td>
-                          <Table.Td>{formatDate(term.start_date)}</Table.Td>
-                          <Table.Td>{formatDate(term.end_date)}</Table.Td>
-                          <Table.Td>
-                            <Group gap="xs">
-                              <Tooltip label="Edit Term">
-                                <ActionIcon variant="light" color="blue" onClick={() => openEditTermModal(term, year.id)}>
-                                  <IconEdit size={18} />
-                                </ActionIcon>
-                              </Tooltip>
-                              <Tooltip label="Delete Term">
-                                <ActionIcon variant="light" color="red" onClick={() => setConfirmDeleteTerm({ term, yearId: year.id })}>
-                                  <IconTrash size={18} />
-                                </ActionIcon>
-                              </Tooltip>
-                            </Group>
-                          </Table.Td>
-                        </Table.Tr>
-                      ))
-                    )}
-                  </Table.Tbody>
-                </Table>
-              </Accordion.Panel>
-            </Accordion.Item>
-          ))
-        )}
-      </Accordion>
+                </Accordion.Control>
+                <Accordion.Panel>
+                  <Text c="dimmed">Add an academic year to get started.</Text>
+                </Accordion.Panel>
+              </Accordion.Item>
+            ) : (
+              academicYears.map((year) => (
+                <Accordion.Item value={year.id} key={year.id}>
+                  <Accordion.Control>
+                    <Group justify="space-between">
+                      <Stack gap={0}>
+                        <Group gap="xs">
+                          <Text fw={500}>{year.name}</Text>
+                          {isCurrentPeriod(year) && (
+                            <Badge color="green" size="sm">Current</Badge>
+                          )}
+                        </Group>
+                        <Text size="xs" c="dimmed">
+                          {formatDate(year.start_date)} - {formatDate(year.end_date)}
+                        </Text>
+                        <Text size="xs" c="dimmed">
+                          {year.terms.length} terms • {calculateDuration(year.start_date, year.end_date)}
+                        </Text>
+                      </Stack>
+                      <Group gap="xs">
+                        <Tooltip label="Edit Academic Year">
+                          <ActionIcon 
+                            variant="light" 
+                            color="blue" 
+                            onClick={(e) => { 
+                              e.stopPropagation(); 
+                              openEditYearModal(year); 
+                            }}
+                          >
+                            <IconEdit size={18} />
+                          </ActionIcon>
+                        </Tooltip>
+                        <Tooltip label="Delete Academic Year">
+                          <ActionIcon 
+                            variant="light" 
+                            color="red" 
+                            onClick={(e) => { 
+                              e.stopPropagation(); 
+                              setConfirmDeleteYear(year); 
+                            }}
+                          >
+                            <IconTrash size={18} />
+                          </ActionIcon>
+                        </Tooltip>
+                      </Group>
+                    </Group>
+                  </Accordion.Control>
+                  <Accordion.Panel>
+                    <Stack gap="md">
+                      <Group justify="space-between">
+                        <Text fw={500}>Terms</Text>
+                        <Button 
+                          leftSection={<IconPlus size={16} />} 
+                          size="xs" 
+                          onClick={() => openAddTermModal(year.id)}
+                        >
+                          Add Term
+                        </Button>
+                      </Group>
+                      
+                      {year.terms.length === 0 ? (
+                        <Alert icon={<IconInfoCircle size={16} />} color="blue">
+                          No terms found for this academic year. Add terms to organize the academic schedule.
+                        </Alert>
+                      ) : (
+                        <Table striped highlightOnHover withTableBorder>
+                          <Table.Thead>
+                            <Table.Tr>
+                              <Table.Th>Name</Table.Th>
+                              <Table.Th>Duration</Table.Th>
+                              <Table.Th>Period Length</Table.Th>
+                              <Table.Th>Status</Table.Th>
+                              <Table.Th>Actions</Table.Th>
+                            </Table.Tr>
+                          </Table.Thead>
+                          <Table.Tbody>
+                            {year.terms.map((term) => (
+                              <Table.Tr key={term.id}>
+                                <Table.Td>
+                                  <Group gap="xs">
+                                    <Text>{term.name}</Text>
+                                    {isCurrentTerm(term) && (
+                                      <Badge color="green" size="xs">Current</Badge>
+                                    )}
+                                  </Group>
+                                </Table.Td>
+                                <Table.Td>
+                                  <Text size="sm">
+                                    {formatDate(term.start_date)} - {formatDate(term.end_date)}
+                                  </Text>
+                                  <Text size="xs" c="dimmed">
+                                    {calculateDuration(term.start_date, term.end_date)}
+                                  </Text>
+                                </Table.Td>
+                                <Table.Td>
+                                  <Text size="sm">
+                                    {term.period_duration_minutes || 50} minutes
+                                  </Text>
+                                </Table.Td>
+                                <Table.Td>
+                                  <Badge 
+                                    color={new Date(term.end_date) < new Date() ? 'red' : 
+                                           new Date(term.start_date) > new Date() ? 'yellow' : 'green'}
+                                    variant="light"
+                                  >
+                                    {new Date(term.end_date) < new Date() ? 'Completed' : 
+                                     new Date(term.start_date) > new Date() ? 'Upcoming' : 'Active'}
+                                  </Badge>
+                                </Table.Td>
+                                <Table.Td>
+                                  <Group gap="xs">
+                                    <Tooltip label="Edit Term">
+                                      <ActionIcon 
+                                        variant="light" 
+                                        color="blue" 
+                                        onClick={() => openEditTermModal(term, year.id)}
+                                      >
+                                        <IconEdit size={18} />
+                                      </ActionIcon>
+                                    </Tooltip>
+                                    <Tooltip label="Delete Term">
+                                      <ActionIcon 
+                                        variant="light" 
+                                        color="red" 
+                                        onClick={() => setConfirmDeleteTerm({ term, yearId: year.id })}
+                                      >
+                                        <IconTrash size={18} />
+                                      </ActionIcon>
+                                    </Tooltip>
+                                  </Group>
+                                </Table.Td>
+                              </Table.Tr>
+                            ))}
+                          </Table.Tbody>
+                        </Table>
+                      )}
+                    </Stack>
+                  </Accordion.Panel>
+                </Accordion.Item>
+              ))
+            )}
+          </Accordion>
+        </Card>
+      </Tabs.Panel>
+
+      <Tabs.Panel value="terms" pt="md">
+        <Card shadow="sm" padding="lg" radius="md" withBorder>
+          <Title order={3} mb="md">Terms Overview</Title>
+          <Table striped highlightOnHover withTableBorder>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Term Name</Table.Th>
+                <Table.Th>Academic Year</Table.Th>
+                <Table.Th>Duration</Table.Th>
+                <Table.Th>Period Length</Table.Th>
+                <Table.Th>Status</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {academicYears.flatMap(year => 
+                year.terms.map(term => (
+                  <Table.Tr key={term.id}>
+                    <Table.Td>
+                      <Group gap="xs">
+                        <Text>{term.name}</Text>
+                        {isCurrentTerm(term) && (
+                          <Badge color="green" size="xs">Current</Badge>
+                        )}
+                      </Group>
+                    </Table.Td>
+                    <Table.Td>{year.name}</Table.Td>
+                    <Table.Td>
+                      <Text size="sm">
+                        {formatDate(term.start_date)} - {formatDate(term.end_date)}
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        {calculateDuration(term.start_date, term.end_date)}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>{term.period_duration_minutes || 50} minutes</Table.Td>
+                    <Table.Td>
+                      <Badge 
+                        color={new Date(term.end_date) < new Date() ? 'red' : 
+                               new Date(term.start_date) > new Date() ? 'yellow' : 'green'}
+                        variant="light"
+                      >
+                        {new Date(term.end_date) < new Date() ? 'Completed' : 
+                         new Date(term.start_date) > new Date() ? 'Upcoming' : 'Active'}
+                      </Badge>
+                    </Table.Td>
+                  </Table.Tr>
+                ))
+              )}
+            </Table.Tbody>
+          </Table>
+        </Card>
+      </Tabs.Panel>
 
       {/* Academic Year Modal */}
       <Modal
@@ -402,15 +660,17 @@ const AcademicCalendarClientUI: React.FC<AcademicCalendarClientUIProps> = ({
               {...yearForm.getInputProps("name")}
               required
             />
-            <TextInput
+            <DateInput
               label="Start Date"
-              type="date"
+              placeholder="Select start date"
+              valueFormat="YYYY-MM-DD"
               {...yearForm.getInputProps("start_date")}
               required
             />
-            <TextInput
+            <DateInput
               label="End Date"
-              type="date"
+              placeholder="Select end date"
+              valueFormat="YYYY-MM-DD"
               {...yearForm.getInputProps("end_date")}
               required
             />
@@ -435,9 +695,11 @@ const AcademicCalendarClientUI: React.FC<AcademicCalendarClientUIProps> = ({
         centered
       >
         <Stack>
-          <Text>
-            Are you sure you want to delete "{confirmDeleteYear?.name}"? This will also delete all its terms. This action cannot be undone.
-          </Text>
+          <Alert icon={<IconX size={16} />} color="red">
+            <Text>
+              Are you sure you want to delete "{confirmDeleteYear?.name}"? This will also delete all its terms and cannot be undone.
+            </Text>
+          </Alert>
           <Group justify="flex-end">
             <Button variant="light" onClick={() => setConfirmDeleteYear(null)}>
               Cancel
@@ -465,17 +727,27 @@ const AcademicCalendarClientUI: React.FC<AcademicCalendarClientUIProps> = ({
               {...termForm.getInputProps("name")}
               required
             />
-            <TextInput
+            <DateInput
               label="Start Date"
-              type="date"
+              placeholder="Select start date"
+              valueFormat="YYYY-MM-DD"
               {...termForm.getInputProps("start_date")}
               required
             />
-            <TextInput
+            <DateInput
               label="End Date"
-              type="date"
+              placeholder="Select end date"
+              valueFormat="YYYY-MM-DD"
               {...termForm.getInputProps("end_date")}
               required
+            />
+            <NumberInput
+              label="Period Duration (minutes)"
+              placeholder="50"
+              min={30}
+              max={120}
+              {...termForm.getInputProps("period_duration_minutes")}
+              description="Duration of each teaching period in minutes"
             />
             <Group justify="flex-end" mt="md">
               <Button variant="light" onClick={() => setTermModalOpen(false)}>
@@ -498,9 +770,11 @@ const AcademicCalendarClientUI: React.FC<AcademicCalendarClientUIProps> = ({
         centered
       >
         <Stack>
-          <Text>
-            Are you sure you want to delete "{confirmDeleteTerm?.term.name}"? This action cannot be undone.
-          </Text>
+          <Alert icon={<IconX size={16} />} color="red">
+            <Text>
+              Are you sure you want to delete "{confirmDeleteTerm?.term.name}"? This action cannot be undone.
+            </Text>
+          </Alert>
           <Group justify="flex-end">
             <Button variant="light" onClick={() => setConfirmDeleteTerm(null)}>
               Cancel
@@ -511,7 +785,7 @@ const AcademicCalendarClientUI: React.FC<AcademicCalendarClientUIProps> = ({
           </Group>
         </Stack>
       </Modal>
-    </Card>
+    </Tabs>
   );
 };
 

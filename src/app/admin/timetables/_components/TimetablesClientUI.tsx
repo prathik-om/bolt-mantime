@@ -171,7 +171,7 @@ export default function TimetablesClientUI({
 
             <div>
               <Label htmlFor="class">Class</Label>
-              <Select onValueChange={(value) => handleFilterChange('class_id', value === 'all' ? undefined : value)}>
+              <Select onValueChange={(value) => handleFilterChange('class_section_id', value === 'all' ? undefined : value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="All Classes" />
                 </SelectTrigger>

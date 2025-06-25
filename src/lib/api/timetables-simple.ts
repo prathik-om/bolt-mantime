@@ -1,5 +1,10 @@
 import { createClient } from '@/utils/supabase/client';
 import { createClient as createServerClient } from '@/utils/supabase/server';
+import type { Database } from '@/lib/database.types';
+
+type ClassOffering = Database['public']['Tables']['class_offerings']['Row'];
+type TeachingAssignment = Database['public']['Tables']['teaching_assignments']['Row'];
+type TimeSlot = Database['public']['Tables']['time_slots']['Row'];
 
 export interface TimetableLesson {
   id: number;
@@ -21,12 +26,40 @@ export interface TimetableLesson {
 }
 
 export interface TimetableFilters {
-  term_id?: string;
-  class_id?: string;
-  teacher_id?: string;
-  date_from?: string;
-  date_to?: string;
-  day_of_week?: number;
+  termId?: string;
+  academicYearId?: string;
+  departmentId?: string;
+  gradeLevel?: number;
+  classId?: string;
+  teacherId?: string;
+}
+
+export interface TimetableData {
+  id: string;
+  term_id: string;
+  term_name: string;
+  academic_year_id: string;
+  academic_year_name: string;
+  class_section_id: string;
+  class_name: string;
+  grade_level: number;
+  course_id: string;
+  course_name: string;
+  course_code: string;
+  department_id: string;
+  department_name: string;
+  teacher_id: string;
+  teacher_name: string;
+  teacher_email: string;
+  periods_per_week: number;
+  required_hours_per_term: number;
+  assignment_type: string;
+  time_slot_id: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  period_number: number;
+  slot_name: string;
 }
 
 // Client-side functions using simple database functions
@@ -76,28 +109,24 @@ export async function getScheduledLessonsClient(
     `);
 
   // Apply filters
-  if (filters.term_id) {
-    query = query.eq('teaching_assignments.class_offerings.term_id', filters.term_id);
+  if (filters.termId) {
+    query = query.eq('teaching_assignments.class_offerings.term_id', filters.termId);
   }
 
-  if (filters.class_id) {
-    query = query.eq('teaching_assignments.class_offerings.class_id', filters.class_id);
+  if (filters.class_section_id) {
+    query = query.eq('teaching_assignments.class_offerings.class_section_id', filters.class_section_id);
   }
 
-  if (filters.teacher_id) {
-    query = query.eq('teaching_assignments.teacher_id', filters.teacher_id);
+  if (filters.teacherId) {
+    query = query.eq('teaching_assignments.teacher_id', filters.teacherId);
   }
 
-  if (filters.date_from) {
-    query = query.gte('date', filters.date_from);
+  if (filters.departmentId) {
+    query = query.eq('teaching_assignments.class_offerings.courses.departments.id', filters.departmentId);
   }
 
-  if (filters.date_to) {
-    query = query.lte('date', filters.date_to);
-  }
-
-  if (filters.day_of_week) {
-    query = query.eq('time_slots.day_of_week', filters.day_of_week);
+  if (filters.gradeLevel) {
+    query = query.eq('teaching_assignments.class_offerings.classes.grade_level', filters.gradeLevel);
   }
 
   const { data, error } = await query.order('date', { ascending: true });
@@ -221,7 +250,7 @@ export async function getClassCurriculumSummary(classId: string, termId: string)
   const supabase = createClient();
   
   const { data, error } = await supabase.rpc('get_class_section_curriculum_summary', {
-    p_class_id: classId,
+    p_class_section_id: classId,
     p_term_id: termId
   });
 
@@ -321,6 +350,10 @@ export async function getTeachersForSchoolClient(schoolId: string) {
   return data || [];
 }
 
+/**
+ * Get terms for a school with academic year information
+ * @deprecated Use getTermsWithAcademicYears from academic-calendar API instead
+ */
 export async function getTermsForSchoolClient(schoolId: string) {
   const supabase = createClient();
 
@@ -361,4 +394,403 @@ export function formatTime(time: string): string {
     minute: '2-digit',
     hour12: true
   });
+}
+
+/**
+ * Get timetable data with comprehensive joins
+ */
+export async function getTimetableData(
+  schoolId: string,
+  filters?: TimetableFilters
+): Promise<TimetableData[]> {
+  const supabase = createClient();
+
+  let query = supabase
+    .from('teaching_assignments')
+    .select(`
+      id,
+      assignment_type,
+      class_offerings!inner(
+        id,
+        class_section_id,
+        periods_per_week,
+        required_hours_per_term,
+        terms!inner(
+          id,
+          name,
+          academic_years!inner(
+            id,
+            name
+          )
+        ),
+        classes!inner(
+          id,
+          name,
+          grade_level
+        ),
+        courses!inner(
+          id,
+          name,
+          code,
+          departments(
+            id,
+            name
+          )
+        )
+      ),
+      teachers!inner(
+        id,
+        first_name,
+        last_name,
+        email
+      ),
+      time_slots!inner(
+        id,
+        day_of_week,
+        start_time,
+        end_time,
+        period_number,
+        slot_name
+      )
+    `)
+    .eq('school_id', schoolId);
+
+  // Apply filters
+  if (filters?.termId) {
+    query = query.eq('class_offerings.term_id', filters.termId);
+  }
+
+  if (filters?.academicYearId) {
+    query = query.eq('class_offerings.terms.academic_year_id', filters.academicYearId);
+  }
+
+  if (filters?.departmentId) {
+    query = query.eq('class_offerings.courses.department_id', filters.departmentId);
+  }
+
+  if (filters?.gradeLevel) {
+    query = query.eq('class_offerings.classes.grade_level', filters.gradeLevel);
+  }
+
+  if (filters?.classId) {
+    query = query.eq('class_offerings.class_section_id', filters.classId);
+  }
+
+  if (filters?.teacherId) {
+    query = query.eq('teacher_id', filters.teacherId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error('Error fetching timetable data:', error);
+    throw new Error(`Failed to fetch timetable data: ${error.message}`);
+  }
+
+  // Transform the data to match the expected interface
+  const transformedData: TimetableData[] = [];
+  
+  for (const assignment of data || []) {
+    const offering = assignment.class_offerings;
+    if (!offering || !offering.classes || !offering.courses || !offering.terms || !assignment.teachers) {
+      continue;
+    }
+
+    const timeSlot = assignment.time_slots;
+    if (!timeSlot) {
+      continue;
+    }
+
+    transformedData.push({
+      id: assignment.id,
+      term_id: offering.terms.id,
+      term_name: offering.terms.name,
+      academic_year_id: offering.terms.academic_years.id,
+      academic_year_name: offering.terms.academic_years.name,
+      class_section_id: offering.class_section_id,
+      class_name: offering.classes.name,
+      grade_level: offering.classes.grade_level,
+      course_id: offering.courses.id,
+      course_name: offering.courses.name,
+      course_code: offering.courses.code,
+      department_id: offering.courses.departments?.id || '',
+      department_name: offering.courses.departments?.name || '',
+      teacher_id: assignment.teachers.id,
+      teacher_name: `${assignment.teachers.first_name} ${assignment.teachers.last_name}`,
+      teacher_email: assignment.teachers.email,
+      periods_per_week: offering.periods_per_week,
+      required_hours_per_term: offering.required_hours_per_term,
+      assignment_type: assignment.assignment_type || 'ai',
+      time_slot_id: timeSlot.id,
+      day_of_week: timeSlot.day_of_week,
+      start_time: timeSlot.start_time,
+      end_time: timeSlot.end_time,
+      period_number: timeSlot.period_number,
+      slot_name: timeSlot.slot_name,
+    });
+  }
+
+  return transformedData;
+}
+
+/**
+ * Get class offerings for a school
+ */
+export async function getClassOfferings(
+  schoolId: string,
+  filters?: {
+    termId?: string;
+    academicYearId?: string;
+    departmentId?: string;
+    gradeLevel?: number;
+  }
+) {
+  const supabase = createClient();
+
+  let query = supabase
+    .from('class_offerings')
+    .select(`
+      id,
+      periods_per_week,
+      required_hours_per_term,
+      assignment_type,
+      terms!inner(
+        id,
+        name,
+        academic_years!inner(
+          id,
+          name,
+          school_id
+        )
+      ),
+      classes!inner(
+        id,
+        name,
+        grade_level,
+        school_id
+      ),
+      courses!inner(
+        id,
+        name,
+        code,
+        department_id,
+        departments(
+          id,
+          name
+        )
+      )
+    `)
+    .eq('terms.academic_years.school_id', schoolId)
+    .eq('classes.school_id', schoolId);
+
+  // Apply filters
+  if (filters?.termId) {
+    query = query.eq('term_id', filters.termId);
+  }
+
+  if (filters?.academicYearId) {
+    query = query.eq('terms.academic_year_id', filters.academicYearId);
+  }
+
+  if (filters?.departmentId) {
+    query = query.eq('courses.department_id', filters.departmentId);
+  }
+
+  if (filters?.gradeLevel) {
+    query = query.eq('classes.grade_level', filters.gradeLevel);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error('Error fetching class offerings:', error);
+    throw new Error(`Failed to fetch class offerings: ${error.message}`);
+  }
+
+  return data || [];
+}
+
+/**
+ * Get teaching assignments for a school
+ */
+export async function getTeachingAssignments(
+  schoolId: string,
+  filters?: {
+    termId?: string;
+    academicYearId?: string;
+    teacherId?: string;
+    classId?: string;
+  }
+) {
+  const supabase = createClient();
+
+  let query = supabase
+    .from('teaching_assignments')
+    .select(`
+      id,
+      assignment_type,
+      assigned_at,
+      class_offerings!inner(
+        id,
+        periods_per_week,
+        required_hours_per_term,
+        terms!inner(
+          id,
+          name,
+          academic_years!inner(
+            id,
+            name,
+            school_id
+          )
+        ),
+        classes!inner(
+          id,
+          name,
+          grade_level,
+          school_id
+        ),
+        courses!inner(
+          id,
+          name,
+          code,
+          departments(
+            id,
+            name
+          )
+        )
+      ),
+      teachers!inner(
+        id,
+        first_name,
+        last_name,
+        email,
+        school_id
+      )
+    `)
+    .eq('school_id', schoolId);
+
+  // Apply filters
+  if (filters?.termId) {
+    query = query.eq('class_offerings.term_id', filters.termId);
+  }
+
+  if (filters?.academicYearId) {
+    query = query.eq('class_offerings.terms.academic_year_id', filters.academicYearId);
+  }
+
+  if (filters?.teacherId) {
+    query = query.eq('teacher_id', filters.teacherId);
+  }
+
+  if (filters?.classId) {
+    query = query.eq('class_offerings.class_section_id', filters.classId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error('Error fetching teaching assignments:', error);
+    throw new Error(`Failed to fetch teaching assignments: ${error.message}`);
+  }
+
+  return data || [];
+}
+
+/**
+ * Get time slots for a school
+ */
+export async function getTimeSlots(schoolId: string) {
+  const supabase = createClient();
+
+  const { data, error } = await supabase
+    .from('time_slots')
+    .select('*')
+    .eq('school_id', schoolId)
+    .order('day_of_week', { ascending: true })
+    .order('start_time', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching time slots:', error);
+    throw new Error(`Failed to fetch time slots: ${error.message}`);
+  }
+
+  return data || [];
+}
+
+/**
+ * Create a teaching assignment
+ */
+export async function createTeachingAssignment(
+  classOfferingId: string,
+  teacherId: string,
+  timeSlotId: string,
+  schoolId: string,
+  assignmentType: string = 'ai'
+) {
+  const supabase = createClient();
+
+  const { data, error } = await supabase
+    .from('teaching_assignments')
+    .insert({
+      class_offering_id: classOfferingId,
+      teacher_id: teacherId,
+      time_slot_id: timeSlotId,
+      school_id: schoolId,
+      assignment_type: assignmentType,
+      assigned_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating teaching assignment:', error);
+    throw new Error(`Failed to create teaching assignment: ${error.message}`);
+  }
+
+  return data;
+}
+
+/**
+ * Update a teaching assignment
+ */
+export async function updateTeachingAssignment(
+  assignmentId: string,
+  updates: {
+    teacher_id?: string;
+    time_slot_id?: string;
+    assignment_type?: string;
+  }
+) {
+  const supabase = createClient();
+
+  const { data, error } = await supabase
+    .from('teaching_assignments')
+    .update(updates)
+    .eq('id', assignmentId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error updating teaching assignment:', error);
+    throw new Error(`Failed to update teaching assignment: ${error.message}`);
+  }
+
+  return data;
+}
+
+/**
+ * Delete a teaching assignment
+ */
+export async function deleteTeachingAssignment(assignmentId: string) {
+  const supabase = createClient();
+
+  const { error } = await supabase
+    .from('teaching_assignments')
+    .delete()
+    .eq('id', assignmentId);
+
+  if (error) {
+    console.error('Error deleting teaching assignment:', error);
+    throw new Error(`Failed to delete teaching assignment: ${error.message}`);
+  }
 } 

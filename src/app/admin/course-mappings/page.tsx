@@ -70,7 +70,7 @@ export default async function CourseMappingsPage() {
         class_offerings (
           id,
           term_id,
-          class_id,
+          class_section_id,
           periods_per_week,
           required_hours_per_term,
           classes (

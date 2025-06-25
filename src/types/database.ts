@@ -44,7 +44,7 @@ export type Database = {
       class_offerings: {
         Row: {
           assignment_type: string | null
-          class_id: string
+          class_section_id: string
           course_id: string
           id: string
           periods_per_week: number
@@ -53,7 +53,7 @@ export type Database = {
         }
         Insert: {
           assignment_type?: string | null
-          class_id: string
+          class_section_id: string
           course_id: string
           id?: string
           periods_per_week: number
@@ -62,7 +62,7 @@ export type Database = {
         }
         Update: {
           assignment_type?: string | null
-          class_id?: string
+          class_section_id?: string
           course_id?: string
           id?: string
           periods_per_week?: number
@@ -71,8 +71,8 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "class_offerings_class_id_fkey"
-            columns: ["class_id"]
+            foreignKeyName: "class_offerings_class_section_id_fkey"
+            columns: ["class_section_id"]
             isOneToOne: false
             referencedRelation: "classes"
             referencedColumns: ["id"]
@@ -222,21 +222,39 @@ export type Database = {
           date: string
           id: string
           reason: string
+          school_id: string
           term_id: string
         }
         Insert: {
           date: string
           id?: string
           reason: string
+          school_id: string
           term_id: string
         }
         Update: {
           date?: string
           id?: string
           reason?: string
+          school_id?: string
           term_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "holidays_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "holidays_term_id_fkey"
+            columns: ["term_id"]
+            isOneToOne: false
+            referencedRelation: "terms"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -612,9 +630,9 @@ export type Database = {
           id?: string
           is_teaching_period?: boolean | null
           period_number?: number | null
-          school_id: string
           slot_name?: string | null
           start_time: string
+          school_id: string
         }
         Update: {
           day_of_week?: number
@@ -634,7 +652,7 @@ export type Database = {
           generated_by: string | null
           id: string
           notes: string | null
-          status: string
+          status: Database['public']['Enums']['timetable_status']
           term_id: string
         }
         Insert: {
@@ -642,7 +660,7 @@ export type Database = {
           generated_by?: string | null
           id?: string
           notes?: string | null
-          status?: string
+          status?: Database['public']['Enums']['timetable_status']
           term_id: string
         }
         Update: {
@@ -650,7 +668,7 @@ export type Database = {
           generated_by?: string | null
           id?: string
           notes?: string | null
-          status?: string
+          status?: Database['public']['Enums']['timetable_status']
           term_id?: string
         }
         Relationships: []
@@ -672,7 +690,7 @@ export type Database = {
         Returns: string
       }
       delete_class_safely: {
-        Args: { class_id: string }
+        Args: { class_section_id: string }
         Returns: {
           success: boolean
           message: string
@@ -692,13 +710,13 @@ export type Database = {
       explain_curriculum_structure: {
         Args: Record<PropertyKey, never>
         Returns: {
-          component: string
           purpose: string
+          component: string
           key_fields: string
         }[]
       }
       get_class_section_curriculum_summary: {
-        Args: { p_class_id: string; p_term_id: string }
+        Args: { p_class_section_id: string; p_term_id: string }
         Returns: {
           total_offerings: number
           total_periods_per_week: number
@@ -764,11 +782,11 @@ export type Database = {
         }[]
       }
       my_function_name: {
-        Args: { p_class_id: string }
+        Args: { p_class_section_id: string }
         Returns: undefined
       }
       preview_class_deletion: {
-        Args: { class_id: string }
+        Args: { class_section_id: string }
         Returns: {
           class_name: string
           offerings_count: number
@@ -819,6 +837,8 @@ export type Database = {
         | "saturday"
         | "sunday"
       time_slot_type: "lecture" | "lab" | "tutorial" | "other"
+      timetable_status: "draft" | "generating" | "completed" | "failed" | "published"
+      timetable_generation_status: "pending" | "in_progress" | "completed" | "failed" | "cancelled"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -908,12 +928,14 @@ export type Enums<
   EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof Database
   }
-    ? keyof Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    ? keyof DefaultSchema["Enums"]
     : never = never,
 > = DefaultSchemaEnumNameOrOptions extends { schema: keyof Database }
   ? Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
     ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
     : never
 
 export type CompositeTypes<
@@ -923,11 +945,11 @@ export type CompositeTypes<
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof Database
   }
-    ? keyof Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    ? keyof DefaultSchema["CompositeTypes"]
     : never = never,
 > = PublicCompositeTypeNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends { schema: keyof Database }
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
 

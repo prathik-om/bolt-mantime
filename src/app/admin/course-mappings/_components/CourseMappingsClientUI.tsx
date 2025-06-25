@@ -19,7 +19,7 @@ import {
   Accordion,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
-import { IconPlus, IconEdit, IconTrash, IconBook, IconSchool } from "@tabler/icons-react";
+import { IconPlus, IconEdit, IconTrash, IconBook, IconSchool, IconX } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import type { Database } from "@/types/database";
@@ -31,22 +31,13 @@ type Course = Database['public']['Tables']['courses']['Row'] & {
   } | null;
   class_offerings: Array<{
     id: string;
-    term_id: string;
-    class_id: string;
+    class_section_id: string;
     periods_per_week: number;
     required_hours_per_term: number | null;
     classes: {
       id: string;
       name: string;
       grade_level: number;
-    } | null;
-    terms: {
-      id: string;
-      name: string;
-      academic_years: {
-        id: string;
-        name: string;
-      } | null;
     } | null;
   }>;
 };
@@ -75,7 +66,7 @@ export const CourseMappingsClientUI: React.FC<CourseMappingsClientUIProps> = ({
   const form = useForm({
     initialValues: {
       class_offerings: [] as Array<{
-        class_id: string;
+        class_section_id: string;
         periods_per_week: number;
         required_hours_per_term: number | null;
       }>,
@@ -90,7 +81,7 @@ export const CourseMappingsClientUI: React.FC<CourseMappingsClientUIProps> = ({
     
     form.setValues({
       class_offerings: course.class_offerings.map(offering => ({
-        class_id: offering.class_id,
+        class_section_id: offering.class_section_id,
         periods_per_week: offering.periods_per_week,
         required_hours_per_term: offering.required_hours_per_term
       })),
@@ -152,98 +143,105 @@ export const CourseMappingsClientUI: React.FC<CourseMappingsClientUIProps> = ({
           No courses found. Please add some subjects first.
         </Alert>
       ) : (
-        <Accordion variant="contained">
+        <div>
           {Object.entries(coursesByDepartment).map(([deptName, courses]) => (
-            <Accordion.Item key={deptName} value={deptName}>
-              <Accordion.Control>
-                <Group>
-                  <Text fw={500}>{deptName}</Text>
-                  <Badge variant="light" color="blue">
-                    {courses.length} course{courses.length !== 1 ? 's' : ''}
-                  </Badge>
-                </Group>
-              </Accordion.Control>
-              <Accordion.Panel>
-                <Table striped highlightOnHover withTableBorder>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>Course</Table.Th>
-                      <Table.Th>Class Offerings</Table.Th>
-                      <Table.Th style={{ width: '100px' }}>Actions</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {courses.map((course) => (
-                      <Table.Tr key={course.id}>
-                        <Table.Td>
-                          <div>
-                            <Text fw={500}>{course.name}</Text>
-                            <Text size="sm" c="dimmed">
-                              {course.code} • Grade {course.grade_level}
-                            </Text>
-                          </div>
-                        </Table.Td>
-                        <Table.Td>
-                          <Stack gap="xs">
-                            {course.class_offerings.length === 0 ? (
-                              <Text size="sm" c="dimmed">No class offerings</Text>
-                            ) : (
-                              course.class_offerings.map((offering) => (
-                                <Badge 
-                                  key={offering.id} 
-                                  variant="light" 
-                                  color="green"
-                                  size="sm"
-                                >
-                                  {offering.classes?.name || 'Unknown Class'} 
-                                  ({offering.periods_per_week} periods/week)
-                                </Badge>
-                              ))
-                            )}
-                          </Stack>
-                        </Table.Td>
-                        <Table.Td>
-                          <Group gap="xs">
-                            <Tooltip label="Edit offerings">
-                              <ActionIcon
-                                variant="light"
-                                color="blue"
-                                onClick={() => openEditModal(course)}
+            <div key={deptName} style={{ marginBottom: '2rem' }}>
+              <Text size="lg" fw={600} mb="md" style={{ color: 'var(--mantine-color-blue-6)' }}>
+                {deptName}
+              </Text>
+              
+              <Table striped highlightOnHover withTableBorder>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Course</Table.Th>
+                    <Table.Th>Class Offerings</Table.Th>
+                    <Table.Th style={{ width: '100px' }}>Actions</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {courses.map((course) => (
+                    <Table.Tr key={course.id}>
+                      <Table.Td>
+                        <div>
+                          <Text fw={500}>{course.name}</Text>
+                          <Text size="sm" c="dimmed">
+                            {course.code} • Grade {course.grade_level}
+                          </Text>
+                        </div>
+                      </Table.Td>
+                      <Table.Td>
+                        <Stack gap="xs">
+                          {course.class_offerings.length === 0 ? (
+                            <Text size="sm" c="dimmed">No class offerings</Text>
+                          ) : (
+                            course.class_offerings.map((offering) => (
+                              <Badge 
+                                key={offering.id} 
+                                variant="light" 
+                                color="green"
+                                size="sm"
                               >
-                                <IconEdit size={16} />
-                              </ActionIcon>
-                            </Tooltip>
-                          </Group>
-                        </Table.Td>
-                      </Table.Tr>
-                    ))}
-                  </Table.Tbody>
-                </Table>
-              </Accordion.Panel>
-            </Accordion.Item>
+                                {offering.classes?.name || 'Unknown Class'} 
+                                ({offering.periods_per_week} periods/week)
+                              </Badge>
+                            ))
+                          )}
+                        </Stack>
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap="xs">
+                          <Tooltip label="Edit offerings">
+                            <ActionIcon
+                              variant="light"
+                              color="blue"
+                              onClick={() => openEditModal(course)}
+                            >
+                              <IconEdit size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </div>
           ))}
-        </Accordion>
+        </div>
       )}
 
-      {/* Edit Modal */}
       <Modal
         opened={modalOpen}
         onClose={() => setModalOpen(false)}
-        title="Edit Course Offerings"
-        size="lg"
+        title={editingCourse ? "Edit Course Offerings" : "Add Course Offerings"}
+        centered
+        size="xl"
       >
         <form onSubmit={form.onSubmit(handleSubmit)}>
-          <Stack gap="md">
-            {editingCourse && (
-              <Alert color="blue" variant="light">
-                <Text size="sm">
-                  Editing offerings for <strong>{editingCourse.name}</strong>
-                </Text>
-              </Alert>
-            )}
+          <Stack gap="lg">
+            <Text size="sm" c="dimmed">
+              Configure which classes will take this course and how many periods per week.
+            </Text>
 
             <div>
-              <Text size="sm" fw={500} mb="xs">Class Offerings</Text>
+              <Group justify="space-between" mb="md">
+                <Text fw={500}>Class Offerings</Text>
+                <Button
+                  size="xs"
+                  variant="light"
+                  leftSection={<IconPlus size={14} />}
+                  onClick={() => {
+                    form.insertListItem('class_offerings', {
+                      class_section_id: '',
+                      periods_per_week: 5,
+                      required_hours_per_term: null
+                    });
+                  }}
+                >
+                  Add Class
+                </Button>
+              </Group>
+
               {form.values.class_offerings.map((offering, index) => (
                 <Card key={index} withBorder p="sm" mb="sm">
                   <Group>
@@ -251,10 +249,10 @@ export const CourseMappingsClientUI: React.FC<CourseMappingsClientUIProps> = ({
                       label="Class"
                       placeholder="Select class"
                       data={classOptions}
-                      value={offering.class_id}
+                      value={offering.class_section_id}
                       onChange={(value) => {
                         const newOfferings = [...form.values.class_offerings];
-                        newOfferings[index].class_id = value || '';
+                        newOfferings[index].class_section_id = value || '';
                         form.setFieldValue('class_offerings', newOfferings);
                       }}
                       style={{ flex: 1 }}
@@ -277,37 +275,18 @@ export const CourseMappingsClientUI: React.FC<CourseMappingsClientUIProps> = ({
                       }}
                     />
                     <ActionIcon
-                      color="red"
                       variant="light"
-                      onClick={() => {
-                        const newOfferings = form.values.class_offerings.filter((_, i) => i !== index);
-                        form.setFieldValue('class_offerings', newOfferings);
-                      }}
+                      color="red"
+                      onClick={() => form.removeListItem('class_offerings', index)}
                     >
-                      <IconTrash size={16} />
+                      <IconX size={16} />
                     </ActionIcon>
                   </Group>
                 </Card>
               ))}
-              
-              <Button
-                variant="light"
-                leftSection={<IconPlus size={16} />}
-                onClick={() => {
-                  const newOfferings = [...form.values.class_offerings, {
-                    class_id: '',
-                    periods_per_week: 1,
-                    required_hours_per_term: null
-                  }];
-                  form.setFieldValue('class_offerings', newOfferings);
-                }}
-                fullWidth
-              >
-                Add Class Offering
-              </Button>
             </div>
 
-            <Group justify="flex-end" mt="md">
+            <Group justify="flex-end">
               <Button variant="light" onClick={() => setModalOpen(false)}>
                 Cancel
               </Button>

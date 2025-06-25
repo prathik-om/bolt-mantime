@@ -14,11 +14,19 @@ import {
   Badge,
   Alert,
   Divider,
+  Table,
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { IconPlus, IconEdit, IconTrash, IconCalendar } from "@tabler/icons-react";
-import { getAcademicYears } from "@/lib/api/schools";
-import type { AcademicYear } from "@/lib/api/schools";
+import { 
+  getAcademicYearsWithTerms,
+  createAcademicYear,
+  updateAcademicYear,
+  deleteAcademicYear,
+  validateAcademicYearDates,
+  type AcademicYearWithTerms
+} from "@/lib/api/academic-calendar";
+import { toast } from "sonner";
 
 interface AcademicYearsManagementModalProps {
   opened: boolean;
@@ -31,10 +39,11 @@ export default function AcademicYearsManagementModal({
   onClose,
   schoolId,
 }: AcademicYearsManagementModalProps) {
-  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
+  const [academicYears, setAcademicYears] = useState<AcademicYearWithTerms[]>([]);
   const [loading, setLoading] = useState(false);
-  const [editingYear, setEditingYear] = useState<AcademicYear | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [editingYear, setEditingYear] = useState<AcademicYearWithTerms | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<AcademicYearWithTerms | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Form state
@@ -44,6 +53,7 @@ export default function AcademicYearsManagementModal({
     end_date: "",
   });
 
+  // Load academic years
   useEffect(() => {
     if (opened) {
       loadAcademicYears();
@@ -51,81 +61,57 @@ export default function AcademicYearsManagementModal({
   }, [opened, schoolId]);
 
   const loadAcademicYears = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const data = await getAcademicYears(schoolId);
+      const data = await getAcademicYearsWithTerms(schoolId);
       setAcademicYears(data);
-    } catch (err) {
-      setError("Failed to load academic years");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSubmit = async () => {
-    try {
-      setLoading(true);
       setError(null);
-
-      // Validate required fields
-      if (!formData.name) {
-        setError("Academic year name is required");
-        return;
-      }
-
-      if (!formData.start_date) {
-        setError("Start date is required");
-        return;
-      }
-
-      if (!formData.end_date) {
-        setError("End date is required");
-        return;
-      }
-
-      if (new Date(formData.start_date) >= new Date(formData.end_date)) {
-        setError("End date must be after start date");
-        return;
-      }
-
-      const yearData = {
-        ...formData,
-        school_id: schoolId,
-      };
-
-      // TODO: Add createAcademicYear and updateAcademicYear functions to schools API
-      if (editingYear) {
-        // await updateAcademicYear(editingYear.id, yearData);
-        console.log("Update academic year:", yearData);
-      } else {
-        // await createAcademicYear(yearData);
-        console.log("Create academic year:", yearData);
-      }
-
-      await loadAcademicYears();
-      resetForm();
-    } catch (err) {
-      setError("Failed to save academic year");
+    } catch (err: any) {
+      setError(err.message || "Failed to load academic years");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
     try {
-      setLoading(true);
-      // TODO: Add deleteAcademicYear function to schools API
-      // await deleteAcademicYear(id);
-      console.log("Delete academic year:", id);
+      // Validate dates
+      const validation = await validateAcademicYearDates(
+        schoolId,
+        formData.start_date,
+        formData.end_date,
+        editingYear?.id
+      );
+
+      if (!validation.isValid) {
+        throw new Error(validation.message);
+      }
+
+      if (editingYear) {
+        await updateAcademicYear(editingYear.id, formData);
+        toast.success("Academic year updated successfully!");
+      } else {
+        await createAcademicYear({
+          ...formData,
+          school_id: schoolId,
+        });
+        toast.success("Academic year created successfully!");
+      }
+
+      setShowForm(false);
+      setEditingYear(null);
+      setFormData({ name: "", start_date: "", end_date: "" });
       await loadAcademicYears();
-    } catch (err) {
-      setError("Failed to delete academic year");
+    } catch (err: any) {
+      toast.error(err.message || "Something went wrong");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleEdit = (year: AcademicYear) => {
+  const handleEdit = (year: AcademicYearWithTerms) => {
     setEditingYear(year);
     setFormData({
       name: year.name,
@@ -135,41 +121,36 @@ export default function AcademicYearsManagementModal({
     setShowForm(true);
   };
 
+  const handleDelete = async () => {
+    if (!confirmDelete) return;
+    setLoading(true);
+    try {
+      await deleteAcademicYear(confirmDelete.id);
+      toast.success("Academic year deleted successfully!");
+      setConfirmDelete(null);
+      await loadAcademicYears();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete academic year");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const resetForm = () => {
-    setFormData({
-      name: "",
-      start_date: "",
-      end_date: "",
-    });
+    setFormData({ name: "", start_date: "", end_date: "" });
     setEditingYear(null);
     setShowForm(false);
   };
 
-  const addCommonAcademicYears = async () => {
-    const currentYear = new Date().getFullYear();
-    const commonYears = [
-      {
-        name: `${currentYear}-${currentYear + 1}`,
-        start_date: `${currentYear}-01-01`,
-        end_date: `${currentYear}-12-31`,
-      },
-      {
-        name: `${currentYear + 1}-${currentYear + 2}`,
-        start_date: `${currentYear + 1}-01-01`,
-        end_date: `${currentYear + 1}-12-31`,
-      },
-    ];
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString();
+  };
 
-    try {
-      setLoading(true);
-      // TODO: Add bulk create function
-      console.log("Add common academic years:", commonYears);
-      await loadAcademicYears();
-    } catch (err) {
-      setError("Failed to add common academic years");
-    } finally {
-      setLoading(false);
-    }
+  const calculateDuration = (startDate: string, endDate: string) => {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const weeks = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 7));
+    return `${weeks} weeks`;
   };
 
   return (
@@ -191,39 +172,43 @@ export default function AcademicYearsManagementModal({
         {showForm && (
           <Card shadow="sm" padding="lg" radius="md" withBorder>
             <Title order={4} mb="md">
-              {editingYear ? "Edit Academic Year" : "Add New Academic Year"}
+              {editingYear ? "Edit Academic Year" : "Add Academic Year"}
             </Title>
-            <Stack gap="md">
-              <TextInput
-                label="Academic Year Name"
-                placeholder="e.g., 2024-2025, Year 10 2024"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                required
-              />
-              <Group grow>
+            <form onSubmit={handleSubmit}>
+              <Stack gap="md">
+                <TextInput
+                  label="Name"
+                  placeholder="e.g., 2024-2025"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  required
+                />
                 <DateInput
                   label="Start Date"
+                  placeholder="Select start date"
+                  valueFormat="YYYY-MM-DD"
                   value={formData.start_date}
                   onChange={(value) => setFormData({ ...formData, start_date: value || "" })}
                   required
                 />
                 <DateInput
                   label="End Date"
+                  placeholder="Select end date"
+                  valueFormat="YYYY-MM-DD"
                   value={formData.end_date}
                   onChange={(value) => setFormData({ ...formData, end_date: value || "" })}
                   required
                 />
-              </Group>
-              <Group justify="flex-end">
-                <Button variant="light" onClick={resetForm}>
-                  Cancel
-                </Button>
-                <Button onClick={handleSubmit} loading={loading}>
-                  {editingYear ? "Update" : "Create"} Academic Year
-                </Button>
-              </Group>
-            </Stack>
+                <Group justify="flex-end" mt="md">
+                  <Button variant="light" onClick={resetForm}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" loading={loading}>
+                    {editingYear ? "Update" : "Create"}
+                  </Button>
+                </Group>
+              </Stack>
+            </form>
           </Card>
         )}
 
@@ -231,73 +216,104 @@ export default function AcademicYearsManagementModal({
         <div>
           <Group justify="space-between" mb="md">
             <Title order={4}>Academic Years</Title>
-            <Group>
-              {!showForm && (
-                <>
-                  <Button
-                    variant="light"
-                    leftSection={<IconCalendar size={16} />}
-                    onClick={addCommonAcademicYears}
-                    size="sm"
-                  >
-                    Add Common Years
-                  </Button>
-                  <Button
-                    leftSection={<IconPlus size={16} />}
-                    onClick={() => setShowForm(true)}
-                    size="sm"
-                  >
-                    Add Academic Year
-                  </Button>
-                </>
-              )}
-            </Group>
+            {!showForm && (
+              <Button
+                leftSection={<IconPlus size={16} />}
+                onClick={() => setShowForm(true)}
+                size="sm"
+              >
+                Add Academic Year
+              </Button>
+            )}
           </Group>
 
-          {academicYears.length === 0 ? (
+          {loading ? (
+            <Text ta="center" c="dimmed">Loading...</Text>
+          ) : academicYears.length === 0 ? (
             <Alert color="blue" title="No Academic Years">
-              No academic years configured yet. Click "Add Academic Year" to get started.
+              No academic years found. Add your first academic year to get started.
             </Alert>
           ) : (
-            <Stack gap="sm">
-              {academicYears.map((year) => (
-                <Card key={year.id} shadow="sm" padding="md" radius="md" withBorder>
-                  <Group justify="space-between">
-                    <div>
+            <Table striped highlightOnHover withTableBorder>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Name</Table.Th>
+                  <Table.Th>Duration</Table.Th>
+                  <Table.Th>Terms</Table.Th>
+                  <Table.Th>Actions</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {academicYears.map((year) => (
+                  <Table.Tr key={year.id}>
+                    <Table.Td>
                       <Text fw={500}>{year.name}</Text>
-                      <Text size="sm" c="dimmed">
-                        {new Date(year.start_date).toISOString().split('T')[0]} - {new Date(year.end_date).toISOString().split('T')[0]}
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm">
+                        {formatDate(year.start_date)} - {formatDate(year.end_date)}
                       </Text>
-                    </div>
-                    <Group>
-                      <Badge color="green" variant="light">
-                        Active
+                      <Text size="xs" c="dimmed">
+                        {calculateDuration(year.start_date, year.end_date)}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge size="sm" variant="light">
+                        {year.terms.length} terms
                       </Badge>
-                      <ActionIcon
-                        variant="light"
-                        color="blue"
-                        onClick={() => handleEdit(year)}
-                      >
-                        <IconEdit size={16} />
-                      </ActionIcon>
-                      <ActionIcon
-                        variant="light"
-                        color="red"
-                        onClick={() => handleDelete(year.id)}
-                      >
-                        <IconTrash size={16} />
-                      </ActionIcon>
-                    </Group>
-                  </Group>
-                </Card>
-              ))}
-            </Stack>
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap="xs">
+                        <ActionIcon
+                          variant="light"
+                          color="blue"
+                          onClick={() => handleEdit(year)}
+                          size="sm"
+                        >
+                          <IconEdit size={16} />
+                        </ActionIcon>
+                        <ActionIcon
+                          variant="light"
+                          color="red"
+                          onClick={() => setConfirmDelete(year)}
+                          size="sm"
+                        >
+                          <IconTrash size={16} />
+                        </ActionIcon>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
           )}
         </div>
 
-        <Group justify="flex-end">
-          <Button onClick={onClose}>Close</Button>
-        </Group>
+        {/* Delete Confirmation */}
+        {confirmDelete && (
+          <Alert color="red" title="Confirm Delete">
+            <Text mb="md">
+              Are you sure you want to delete "{confirmDelete.name}"? This will also delete all its terms and cannot be undone.
+            </Text>
+            <Group>
+              <Button
+                variant="light"
+                onClick={() => setConfirmDelete(null)}
+                size="sm"
+              >
+                Cancel
+              </Button>
+              <Button
+                color="red"
+                onClick={handleDelete}
+                loading={loading}
+                size="sm"
+              >
+                Delete
+              </Button>
+            </Group>
+          </Alert>
+        )}
       </Stack>
     </Modal>
   );

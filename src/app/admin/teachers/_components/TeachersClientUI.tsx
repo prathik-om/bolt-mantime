@@ -66,7 +66,12 @@ import {
   IconSchool, 
   IconBuilding,
   IconUsers,
-  IconBook
+  IconBook,
+  IconChartBar,
+  IconUserCheck,
+  IconAlertTriangle,
+  IconCheck,
+  IconX
 } from "@tabler/icons-react";
 import { notifications } from '@mantine/notifications';
 import { useRouter } from "next/navigation";
@@ -77,7 +82,10 @@ import {
   getTeachersWithDepartments, 
   bulkAssignTeacherToDepartments,
   getTeacherQualifications,
-  type TeacherWithDepartments 
+  getTeacherWorkloadInfo,
+  validateTeacherDepartmentAssignment,
+  type TeacherWithDepartments,
+  type TeacherWorkloadInfo
 } from "@/lib/api/teacher-departments";
 
 // Types based on new schema
@@ -95,14 +103,19 @@ const TeachersClientUI: React.FC<TeachersClientUIProps> = ({
   const [teachers, setTeachers] = useState<TeacherWithDepartments[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [workloadModalOpen, setWorkloadModalOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<TeacherWithDepartments | null>(null);
   const [editingTeacher, setEditingTeacher] = useState<TeacherWithDepartments | null>(null);
   const [viewTeacher, setViewTeacher] = useState<TeacherWithDepartments | null>(null);
+  const [selectedTeacherForWorkload, setSelectedTeacherForWorkload] = useState<TeacherWithDepartments | null>(null);
+  const [teacherWorkload, setTeacherWorkload] = useState<TeacherWorkloadInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [departments, setDepartments] = useState<{ value: string; label: string }[]>([]);
   const [teacherQualifications, setTeacherQualifications] = useState<any[]>([]);
   const [formLoading, setFormLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [workloadLoading, setWorkloadLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<string | null>('overview');
   const router = useRouter();
   const supabase = createClient();
 
@@ -181,6 +194,26 @@ const TeachersClientUI: React.FC<TeachersClientUIProps> = ({
     }
   };
 
+  const openWorkloadModal = async (teacher: TeacherWithDepartments) => {
+    setSelectedTeacherForWorkload(teacher);
+    setWorkloadLoading(true);
+    try {
+      // For now, we'll use a dummy term ID - in a real app, you'd get the current term
+      const workload = await getTeacherWorkloadInfo(teacher.id, 'dummy-term-id');
+      setTeacherWorkload(workload);
+    } catch (error) {
+      console.error('Error loading workload:', error);
+      notifications.show({ 
+        title: 'Error', 
+        message: 'Failed to load workload information', 
+        color: 'red' 
+      });
+    } finally {
+      setWorkloadLoading(false);
+    }
+    setWorkloadModalOpen(true);
+  };
+
   const handleSubmit = async (values: typeof form.values) => {
     setFormLoading(true);
     try {
@@ -238,6 +271,18 @@ const TeachersClientUI: React.FC<TeachersClientUIProps> = ({
     }
   };
 
+  const getWorkloadStatus = (teacher: TeacherWithDepartments) => {
+    const maxPeriods = teacher.max_periods_per_week || 20;
+    // This would be calculated from actual assignments in a real implementation
+    const currentPeriods = 0; // Placeholder
+    const percentage = maxPeriods > 0 ? (currentPeriods / maxPeriods) * 100 : 0;
+    
+    if (percentage >= 100) return { status: 'Overloaded', color: 'red' };
+    if (percentage >= 80) return { status: 'High', color: 'orange' };
+    if (percentage >= 60) return { status: 'Moderate', color: 'yellow' };
+    return { status: 'Available', color: 'green' };
+  };
+
   return (
     <Container size="xl" py="md">
       <Card shadow="sm" padding="lg" radius="md" withBorder>
@@ -261,82 +306,101 @@ const TeachersClientUI: React.FC<TeachersClientUIProps> = ({
                 <Table.Th>Email</Table.Th>
                 <Table.Th>Departments</Table.Th>
                 <Table.Th>Max Periods/Week</Table.Th>
+                <Table.Th>Workload</Table.Th>
                 <Table.Th>Actions</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {loading ? (
                 <Table.Tr>
-                  <Table.Td colSpan={5} align="center">
+                  <Table.Td colSpan={6} align="center">
                     <Loader size="sm" />
                   </Table.Td>
                 </Table.Tr>
               ) : teachers.length === 0 ? (
                 <Table.Tr>
-                  <Table.Td colSpan={5} align="center">
+                  <Table.Td colSpan={6} align="center">
                     No teachers found.
                   </Table.Td>
                 </Table.Tr>
               ) : (
-                teachers.map((teacher) => (
-                  <Table.Tr key={teacher.id}>
-                    <Table.Td>
-                      <Text fw={500}>
-                        {teacher.first_name} {teacher.last_name}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>{teacher.email}</Table.Td>
-                    <Table.Td>
-                      <Group gap="xs">
-                        {teacher.teacher_departments?.map((td) => (
-                          <Badge 
-                            key={td.id} 
-                            color={td.is_primary ? "blue" : "gray"}
-                            variant={td.is_primary ? "filled" : "light"}
-                          >
-                            {td.department.name}
-                            {td.is_primary && " (Primary)"}
-                          </Badge>
-                        )) || <Text size="sm" c="dimmed">No departments assigned</Text>}
-                      </Group>
-                    </Table.Td>
-                    <Table.Td>{teacher.max_periods_per_week || 'Not set'}</Table.Td>
-                    <Table.Td>
-                      <Group gap="xs">
-                        <Tooltip label="View Details">
-                          <ActionIcon
-                            variant="light"
-                            color="blue"
-                            onClick={() => openViewModal(teacher)}
-                            aria-label="View details"
-                          >
-                            <IconEye size={18} />
-                          </ActionIcon>
-                        </Tooltip>
-                        <Tooltip label="Edit">
-                          <ActionIcon
-                            variant="light"
-                            color="blue"
-                            onClick={() => openEditModal(teacher)}
-                            aria-label="Edit"
-                          >
-                            <IconEdit size={18} />
-                          </ActionIcon>
-                        </Tooltip>
-                        <Tooltip label="Delete">
-                          <ActionIcon
-                            variant="light"
-                            color="red"
-                            onClick={() => setConfirmDelete(teacher)}
-                            aria-label="Delete"
-                          >
-                            <IconTrash size={18} />
-                          </ActionIcon>
-                        </Tooltip>
-                      </Group>
-                    </Table.Td>
-                  </Table.Tr>
-                ))
+                teachers.map((teacher) => {
+                  const workloadStatus = getWorkloadStatus(teacher);
+                  return (
+                    <Table.Tr key={teacher.id}>
+                      <Table.Td>
+                        <Text fw={500}>
+                          {teacher.first_name} {teacher.last_name}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>{teacher.email}</Table.Td>
+                      <Table.Td>
+                        <Group gap="xs">
+                          {teacher.teacher_departments?.map((td) => (
+                            <Badge 
+                              key={td.id} 
+                              color={td.is_primary ? "blue" : "gray"}
+                              variant={td.is_primary ? "filled" : "light"}
+                            >
+                              {td.department.name}
+                              {td.is_primary && " (Primary)"}
+                            </Badge>
+                          )) || <Text size="sm" c="dimmed">No departments assigned</Text>}
+                        </Group>
+                      </Table.Td>
+                      <Table.Td>{teacher.max_periods_per_week || 'Not set'}</Table.Td>
+                      <Table.Td>
+                        <Badge color={workloadStatus.color} variant="light">
+                          {workloadStatus.status}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap="xs">
+                          <Tooltip label="View Details">
+                            <ActionIcon
+                              variant="light"
+                              color="blue"
+                              onClick={() => openViewModal(teacher)}
+                              aria-label="View details"
+                            >
+                              <IconEye size={18} />
+                            </ActionIcon>
+                          </Tooltip>
+                          <Tooltip label="Workload Analysis">
+                            <ActionIcon
+                              variant="light"
+                              color="green"
+                              onClick={() => openWorkloadModal(teacher)}
+                              aria-label="Workload analysis"
+                            >
+                              <IconChartBar size={18} />
+                            </ActionIcon>
+                          </Tooltip>
+                          <Tooltip label="Edit">
+                            <ActionIcon
+                              variant="light"
+                              color="blue"
+                              onClick={() => openEditModal(teacher)}
+                              aria-label="Edit"
+                            >
+                              <IconEdit size={18} />
+                            </ActionIcon>
+                          </Tooltip>
+                          <Tooltip label="Delete">
+                            <ActionIcon
+                              variant="light"
+                              color="red"
+                              onClick={() => setConfirmDelete(teacher)}
+                              aria-label="Delete"
+                            >
+                              <IconTrash size={18} />
+                            </ActionIcon>
+                          </Tooltip>
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  );
+                })
               )}
             </Table.Tbody>
           </Table>
@@ -417,62 +481,187 @@ const TeachersClientUI: React.FC<TeachersClientUIProps> = ({
           centered
         >
           {viewTeacher && (
-            <Stack gap="md">
-              <Group>
+            <Tabs value={activeTab} onChange={setActiveTab}>
+              <TabsList>
+                <TabsTab value="overview" leftSection={<IconUserCheck size={16} />}>
+                  Overview
+                </TabsTab>
+                <TabsTab value="qualifications" leftSection={<IconBook size={16} />}>
+                  Qualifications
+                </TabsTab>
+                <TabsTab value="departments" leftSection={<IconBuilding size={16} />}>
+                  Departments
+                </TabsTab>
+              </TabsList>
+
+              <TabsPanel value="overview" pt="xs">
+                <Stack gap="md">
+                  <Group>
+                    <div>
+                      <Text size="sm" fw={500}>Email</Text>
+                      <Text size="sm" c="dimmed">{viewTeacher.email}</Text>
+                    </div>
+                    <div>
+                      <Text size="sm" fw={500}>Max Periods/Week</Text>
+                      <Text size="sm" c="dimmed">{viewTeacher.max_periods_per_week || 'Not set'}</Text>
+                    </div>
+                  </Group>
+                  <Divider />
+                  <div>
+                    <Text size="sm" fw={500} mb="xs">Department Assignments</Text>
+                    <Group gap="xs">
+                      {viewTeacher.teacher_departments?.map((td) => (
+                        <Badge 
+                          key={td.id} 
+                          color={td.is_primary ? "blue" : "gray"}
+                          variant={td.is_primary ? "filled" : "light"}
+                        >
+                          {td.department.name}
+                          {td.is_primary && " (Primary)"}
+                        </Badge>
+                      )) || <Text size="sm" c="dimmed">No departments assigned</Text>}
+                    </Group>
+                  </div>
+                </Stack>
+              </TabsPanel>
+
+              <TabsPanel value="qualifications" pt="xs">
                 <div>
-                  <Text size="sm" fw={500}>Email</Text>
-                  <Text size="sm" c="dimmed">{viewTeacher.email}</Text>
+                  <Text size="sm" fw={500} mb="xs">Qualifications (Courses they can teach)</Text>
+                  {teacherQualifications.length > 0 ? (
+                    <ScrollArea h={300} type="auto">
+                      <Stack gap="xs">
+                        {teacherQualifications.map((qual, index) => (
+                          <Paper key={index} p="xs" withBorder>
+                            <Group justify="space-between">
+                              <div>
+                                <Text size="sm" fw={500}>{qual.course_name}</Text>
+                                <Text size="xs" c="dimmed">
+                                  {qual.department_name} • Grade {qual.grade_level}
+                                  {qual.course_code && ` • ${qual.course_code}`}
+                                </Text>
+                              </div>
+                              {qual.is_primary_department && (
+                                <Badge size="xs" color="blue">Primary</Badge>
+                              )}
+                            </Group>
+                          </Paper>
+                        ))}
+                      </Stack>
+                    </ScrollArea>
+                  ) : (
+                    <Text size="sm" c="dimmed">No qualifications found</Text>
+                  )}
                 </div>
+              </TabsPanel>
+
+              <TabsPanel value="departments" pt="xs">
                 <div>
-                  <Text size="sm" fw={500}>Max Periods/Week</Text>
-                  <Text size="sm" c="dimmed">{viewTeacher.max_periods_per_week || 'Not set'}</Text>
-                </div>
-              </Group>
-              <Divider />
-              <div>
-                <Text size="sm" fw={500} mb="xs">Department Assignments</Text>
-                <Group gap="xs">
-                  {viewTeacher.teacher_departments?.map((td) => (
-                    <Badge 
-                      key={td.id} 
-                      color={td.is_primary ? "blue" : "gray"}
-                      variant={td.is_primary ? "filled" : "light"}
-                    >
-                      {td.department.name}
-                      {td.is_primary && " (Primary)"}
-                    </Badge>
-                  )) || <Text size="sm" c="dimmed">No departments assigned</Text>}
-                </Group>
-              </div>
-              <Divider />
-              <div>
-                <Text size="sm" fw={500} mb="xs">Qualifications (Courses they can teach)</Text>
-                {teacherQualifications.length > 0 ? (
-                  <ScrollArea h={200} type="auto">
-                    <Stack gap="xs">
-                      {teacherQualifications.map((qual, index) => (
-                        <Paper key={index} p="xs" withBorder>
+                  <Text size="sm" fw={500} mb="xs">Department Details</Text>
+                  {viewTeacher.teacher_departments && viewTeacher.teacher_departments.length > 0 ? (
+                    <Stack gap="md">
+                      {viewTeacher.teacher_departments.map((td) => (
+                        <Paper key={td.id} p="md" withBorder>
                           <Group justify="space-between">
                             <div>
-                              <Text size="sm" fw={500}>{qual.course_name}</Text>
-                              <Text size="xs" c="dimmed">
-                                {qual.department_name} • Grade {qual.grade_level}
-                                {qual.course_code && ` • ${qual.course_code}`}
-                              </Text>
+                              <Text fw={500}>{td.department.name}</Text>
+                              {td.department.code && (
+                                <Text size="sm" c="dimmed">Code: {td.department.code}</Text>
+                              )}
                             </div>
-                            {qual.is_primary_department && (
-                              <Badge size="xs" color="blue">Primary</Badge>
-                            )}
+                            <Badge 
+                              color={td.is_primary ? "blue" : "gray"}
+                              variant={td.is_primary ? "filled" : "light"}
+                            >
+                              {td.is_primary ? "Primary" : "Secondary"}
+                            </Badge>
                           </Group>
                         </Paper>
                       ))}
                     </Stack>
-                  </ScrollArea>
-                ) : (
-                  <Text size="sm" c="dimmed">No qualifications found</Text>
-                )}
-              </div>
+                  ) : (
+                    <Text size="sm" c="dimmed">No departments assigned</Text>
+                  )}
+                </div>
+              </TabsPanel>
+            </Tabs>
+          )}
+        </Modal>
+
+        {/* Workload Analysis Modal */}
+        <Modal
+          opened={workloadModalOpen}
+          onClose={() => setWorkloadModalOpen(false)}
+          title={selectedTeacherForWorkload ? `Workload Analysis - ${selectedTeacherForWorkload.first_name} ${selectedTeacherForWorkload.last_name}` : "Workload Analysis"}
+          size="lg"
+          centered
+        >
+          {workloadLoading ? (
+            <Stack align="center" py="xl">
+              <Loader size="lg" />
+              <Text>Loading workload information...</Text>
             </Stack>
+          ) : teacherWorkload ? (
+            <Stack gap="lg">
+              <Card withBorder p="md">
+                <Group justify="space-between" mb="md">
+                  <Text fw={500}>Current Workload</Text>
+                  <Badge 
+                    color={teacherWorkload.utilization_percentage >= 100 ? 'red' : 
+                           teacherWorkload.utilization_percentage >= 80 ? 'orange' : 
+                           teacherWorkload.utilization_percentage >= 60 ? 'yellow' : 'green'}
+                    variant="light"
+                  >
+                    {teacherWorkload.utilization_percentage}% Utilized
+                  </Badge>
+                </Group>
+                
+                <Group>
+                  <div>
+                    <Text size="sm" c="dimmed">Total Periods/Week</Text>
+                    <Text fw={500}>{teacherWorkload.total_periods_per_week}</Text>
+                  </div>
+                  <div>
+                    <Text size="sm" c="dimmed">Max Periods/Week</Text>
+                    <Text fw={500}>{teacherWorkload.max_periods_per_week}</Text>
+                  </div>
+                </Group>
+
+                <Progress 
+                  value={Math.min(teacherWorkload.utilization_percentage, 100)} 
+                  color={teacherWorkload.utilization_percentage >= 100 ? 'red' : 
+                         teacherWorkload.utilization_percentage >= 80 ? 'orange' : 
+                         teacherWorkload.utilization_percentage >= 60 ? 'yellow' : 'green'}
+                  size="lg"
+                  mt="md"
+                />
+              </Card>
+
+              <Card withBorder p="md">
+                <Text fw={500} mb="md">Department Assignments</Text>
+                {teacherWorkload.department_assignments.length > 0 ? (
+                  <Stack gap="xs">
+                    {teacherWorkload.department_assignments.map((dept, index) => (
+                      <Group key={index} justify="space-between">
+                        <Text>{dept.department_name}</Text>
+                        <Group gap="xs">
+                          {dept.is_primary && (
+                            <Badge size="xs" color="blue">Primary</Badge>
+                          )}
+                          <Text size="sm" c="dimmed">{dept.periods_per_week} periods/week</Text>
+                        </Group>
+                      </Group>
+                    ))}
+                  </Stack>
+                ) : (
+                  <Text size="sm" c="dimmed">No department assignments found</Text>
+                )}
+              </Card>
+            </Stack>
+          ) : (
+            <Alert icon={<IconAlertTriangle size={16} />} color="red" title="Error">
+              Failed to load workload information
+            </Alert>
           )}
         </Modal>
 

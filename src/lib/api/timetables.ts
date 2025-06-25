@@ -22,7 +22,7 @@ export interface TimetableLesson {
 
 export interface TimetableFilters {
   term_id?: string;
-  class_id?: string;
+  class_section_id?: string;
   teacher_id?: string;
   date_from?: string;
   date_to?: string;
@@ -91,8 +91,8 @@ export async function getScheduledLessonsClient(
     query = query.eq('teaching_assignments.class_offerings.term_id', filters.term_id);
   }
 
-  if (filters.class_id) {
-    query = query.eq('teaching_assignments.class_offerings.class_id', filters.class_id);
+  if (filters.class_section_id) {
+    query = query.eq('teaching_assignments.class_offerings.class_section_id', filters.class_section_id);
   }
 
   if (filters.teacher_id) {
