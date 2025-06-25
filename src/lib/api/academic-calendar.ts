@@ -14,7 +14,11 @@ export interface AcademicYearWithTerms extends AcademicYear {
 }
 
 export interface TermWithAcademicYear extends Term {
-  academic_years: AcademicYear;
+  academic_years: {
+    id: string;
+    name: string;
+    school_id: string;
+  };
 }
 
 export interface AcademicCalendarSummary {

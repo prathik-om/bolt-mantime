@@ -55,12 +55,23 @@ export default function TeacherAssignmentDashboard() {
   const loadDashboardData = async () => {
     try {
       setLoading(true)
+      if (!schoolId) {
+        console.error('School ID is required')
+        return
+      }
       const [statsData, workloadData] = await Promise.all([
         getTeacherAssignmentStats(schoolId, selectedAcademicYear, selectedTerm),
         getTeacherWorkloadInsights(schoolId, selectedAcademicYear, selectedTerm)
       ])
-      setStats(statsData)
-      setWorkloadInsights(workloadData)
+      setStats(statsData || { assignmentTypes: {}, workloadDistribution: {}, totalAssignments: 0, totalTeachers: 0 })
+      
+      // Type guard to check if workloadData is an array of WorkloadInsight objects
+      const isValidWorkloadData = Array.isArray(workloadData) && 
+        workloadData.length > 0 && 
+        'teacher_id' in workloadData[0] && 
+        'teacher_name' in workloadData[0]
+      
+      setWorkloadInsights(isValidWorkloadData ? (workloadData as unknown as WorkloadInsight[]) : [])
     } catch (error) {
       console.error('Error loading dashboard data:', error)
     } finally {

@@ -4,9 +4,9 @@ import { CheckCircle, AlertTriangle, Clock } from 'lucide-react'
 import { useSystemStatus } from '@/hooks/use-system-status'
 
 export function SystemStatus() {
-  const { data: status, isLoading } = useSystemStatus()
+  const status = useSystemStatus()
 
-  if (isLoading) {
+  if (status === 'loading') {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="animate-pulse">
@@ -49,7 +49,7 @@ export function SystemStatus() {
               <span className="text-yellow-800 font-medium">AI Generation</span>
             </div>
             <span className="text-sm text-yellow-600">
-              {status?.hasGeneratedTimetables ? 'Generated' : 'Pending'}
+              {status === 'online' ? 'Ready' : 'Pending'}
             </span>
           </div>
         </div>

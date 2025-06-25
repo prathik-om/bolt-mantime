@@ -72,7 +72,10 @@ export default function TeacherAssignmentForm({
   // Fetch class offerings
   const { data: classOfferings, isLoading: classOfferingsLoading, error: classOfferingsError } = useQuery({
     queryKey: ['class-offerings', schoolId],
-    queryFn: async (): Promise<ClassOffering[]> => {
+    queryFn: async (): Promise<(ClassOffering & { 
+      course: { name: string; code: string | null; school_id: string }; 
+      class: { name: string; grade_level: number; school_id: string } 
+    })[]> => {
       console.log('Fetching class offerings for school:', schoolId);
       const { data, error } = await supabase
         .from('class_offerings')

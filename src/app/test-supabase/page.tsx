@@ -34,7 +34,7 @@ export default function TestSupabasePage() {
       }
       
       // Test 3: Check if we can access the schools table
-      const { data: schools, error: schoolsError } = await createClient
+      const { data: schools, error: schoolsError } = await createClient()
         .from('schools')
         .select('count')
         .limit(1);
@@ -49,7 +49,7 @@ export default function TestSupabasePage() {
       if (user) {
         addResult('Attempting to create test school...');
         
-        const { data: newSchool, error: insertError } = await createClient
+        const { data: newSchool, error: insertError } = await createClient()
           .from('schools')
           .insert({
             name: `Test School ${Date.now()}`,
@@ -69,7 +69,7 @@ export default function TestSupabasePage() {
           addResult(`✅ School created successfully with ID: ${newSchool[0].id}`);
           
           // Clean up - delete the test school
-          const { error: deleteError } = await createClient
+          const { error: deleteError } = await createClient()
             .from('schools')
             .delete()
             .eq('id', newSchool[0].id);

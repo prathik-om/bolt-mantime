@@ -7,31 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          query?: string
-          operationName?: string
-          variables?: Json
-          extensions?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       academic_years: {
@@ -113,7 +88,7 @@ export type Database = {
       class_offerings: {
         Row: {
           assignment_type: string | null
-          class_section_id: string
+          class_id: string
           course_id: string
           id: string
           periods_per_week: number
@@ -122,7 +97,7 @@ export type Database = {
         }
         Insert: {
           assignment_type?: string | null
-          class_section_id: string
+          class_id: string
           course_id: string
           id?: string
           periods_per_week: number
@@ -131,7 +106,7 @@ export type Database = {
         }
         Update: {
           assignment_type?: string | null
-          class_section_id?: string
+          class_id?: string
           course_id?: string
           id?: string
           periods_per_week?: number
@@ -140,8 +115,8 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "class_offerings_class_section_id_fkey"
-            columns: ["class_section_id"]
+            foreignKeyName: "class_offerings_class_id_fkey"
+            columns: ["class_id"]
             isOneToOne: false
             referencedRelation: "classes"
             referencedColumns: ["id"]
@@ -736,7 +711,7 @@ export type Database = {
           generated_by: string | null
           id: string
           notes: string | null
-          status: string
+          status: Database["public"]["Enums"]["timetable_status"]
           term_id: string
         }
         Insert: {
@@ -744,7 +719,7 @@ export type Database = {
           generated_by?: string | null
           id?: string
           notes?: string | null
-          status?: string
+          status?: Database["public"]["Enums"]["timetable_status"]
           term_id: string
         }
         Update: {
@@ -752,7 +727,7 @@ export type Database = {
           generated_by?: string | null
           id?: string
           notes?: string | null
-          status?: string
+          status?: Database["public"]["Enums"]["timetable_status"]
           term_id?: string
         }
         Relationships: [
@@ -777,12 +752,16 @@ export type Database = {
       }
     }
     Functions: {
+      create_admin_profile_with_school: {
+        Args: { p_user_id: string; p_school_id: string }
+        Returns: string
+      }
       create_class_section: {
-        Args: { p_name: string; p_school_id: string; p_grade_level: number }
+        Args: { p_school_id: string; p_grade_level: number; p_name: string }
         Returns: string
       }
       delete_class_safely: {
-        Args: { class_section_id: string }
+        Args: { class_id: string }
         Returns: {
           success: boolean
           message: string
@@ -802,13 +781,24 @@ export type Database = {
       explain_curriculum_structure: {
         Args: Record<PropertyKey, never>
         Returns: {
-          purpose: string
           component: string
+          purpose: string
           key_fields: string
         }[]
       }
+      get_available_teaching_time: {
+        Args: { term_id_param: string }
+        Returns: {
+          day_of_week: number
+          start_time: string
+          end_time: string
+          period_number: number
+          slot_id: string
+          is_available: boolean
+        }[]
+      }
       get_class_section_curriculum_summary: {
-        Args: { p_class_section_id: string; p_term_id: string }
+        Args: { p_class_id: string; p_term_id: string }
         Returns: {
           total_offerings: number
           total_periods_per_week: number
@@ -847,8 +837,8 @@ export type Database = {
           start_time: string
           end_time: string
           sequence: number
-          duration_minutes: number
           is_active: boolean
+          duration_minutes: number
         }[]
       }
       get_teacher_department_summary: {
@@ -885,12 +875,39 @@ export type Database = {
           is_primary_department: boolean
         }[]
       }
-      my_function_name: {
-        Args: { p_class_section_id: string }
+      log_migration_issue: {
+        Args: {
+          p_table_name: string
+          p_issue_type: string
+          p_issue_description: string
+          p_record_id?: string
+          p_field_name?: string
+          p_current_value?: string
+          p_suggested_fix?: string
+          p_severity?: string
+        }
         Returns: undefined
       }
+      my_function_name: {
+        Args: { p_class_id: string }
+        Returns: undefined
+      }
+      prepare_timetable_data: {
+        Args: { school_uuid: string }
+        Returns: {
+          class_offering_id: string
+          course_id: string
+          class_id: string
+          teacher_id: string
+          periods_per_week: number
+          required_hours: number
+          term_start: string
+          term_end: string
+          available_slots: Json
+        }[]
+      }
       preview_class_deletion: {
-        Args: { class_section_id: string }
+        Args: { class_id: string }
         Returns: {
           class_name: string
           offerings_count: number
@@ -898,6 +915,39 @@ export type Database = {
           assignments_count: number
           courses_affected: string[]
           teachers_affected: string[]
+        }[]
+      }
+      validate_all_data_integrity: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          validation_type: string
+          message: string
+          record_id: string
+        }[]
+      }
+      validate_class_offerings_integrity: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          issue_type: string
+          description: string
+          record_id: string
+        }[]
+      }
+      validate_course_hours_distribution: {
+        Args: { course_id_param: string }
+        Returns: {
+          validation_type: string
+          message: string
+          severity: string
+          details: Json
+        }[]
+      }
+      validate_cross_references: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          issue_type: string
+          description: string
+          record_id: string
         }[]
       }
       validate_curriculum_consistency: {
@@ -922,12 +972,57 @@ export type Database = {
           message: string
         }[]
       }
+      validate_migration_results: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          validation_type: string
+          message: string
+          severity: string
+          details: Json
+        }[]
+      }
+      validate_period_duration_consistency: {
+        Args: { school_id_param: string }
+        Returns: {
+          validation_type: string
+          message: string
+          severity: string
+          details: Json
+        }[]
+      }
+      validate_scheduled_lessons_integrity: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          issue_type: string
+          description: string
+          record_id: string
+        }[]
+      }
       validate_schema_consistency: {
         Args: Record<PropertyKey, never>
         Returns: {
           validation_type: string
           message: string
           severity: string
+        }[]
+      }
+      validate_teacher_workload_constraints: {
+        Args: { term_id_param: string }
+        Returns: {
+          teacher_id: string
+          teacher_name: string
+          current_periods: number
+          max_periods: number
+          available_periods: number
+          is_overloaded: boolean
+        }[]
+      }
+      validate_teaching_assignments_integrity: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          issue_type: string
+          description: string
+          record_id: string
         }[]
       }
     }
@@ -941,6 +1036,18 @@ export type Database = {
         | "saturday"
         | "sunday"
       time_slot_type: "lecture" | "lab" | "tutorial" | "other"
+      timetable_generation_status:
+        | "pending"
+        | "in_progress"
+        | "completed"
+        | "failed"
+        | "cancelled"
+      timetable_status:
+        | "draft"
+        | "generating"
+        | "completed"
+        | "failed"
+        | "published"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1054,9 +1161,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       day_of_week: [
@@ -1069,7 +1173,20 @@ export const Constants = {
         "sunday",
       ],
       time_slot_type: ["lecture", "lab", "tutorial", "other"],
+      timetable_generation_status: [
+        "pending",
+        "in_progress",
+        "completed",
+        "failed",
+        "cancelled",
+      ],
+      timetable_status: [
+        "draft",
+        "generating",
+        "completed",
+        "failed",
+        "published",
+      ],
     },
   },
 } as const
-

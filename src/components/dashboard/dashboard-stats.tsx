@@ -36,9 +36,9 @@ function StatCard({ title, value, icon: Icon, color, href }: StatCardProps) {
 }
 
 export function DashboardStats() {
-  const { data: stats, isLoading } = useSchoolStats()
+  const { stats, loading } = useSchoolStats()
 
-  if (isLoading) {
+  if (loading) {
     return (
       <SimpleGrid cols={{ base: 1, md: 2, lg: 4 }} spacing="md">
         {Array.from({ length: 4 }).map((_, i) => (

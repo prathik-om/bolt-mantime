@@ -21,12 +21,14 @@ export interface TimetableLesson {
 }
 
 export interface TimetableFilters {
-  term_id?: string;
-  class_section_id?: string;
-  teacher_id?: string;
-  date_from?: string;
-  date_to?: string;
-  day_of_week?: number;
+  termId?: string;
+  teacherId?: string;
+  classId?: string;
+  roomId?: string;
+  dayOfWeek?: number;
+  startTime?: string;
+  endTime?: string;
+  status?: string;
 }
 
 // Client-side function for use in client components
@@ -87,30 +89,30 @@ export async function getScheduledLessonsClient(
     .in('timeslot_id', timeSlotIds);
 
   // Apply filters
-  if (filters.term_id) {
-    query = query.eq('teaching_assignments.class_offerings.term_id', filters.term_id);
+  if (filters.termId) {
+    query = query.eq('teaching_assignments.class_offerings.term_id', filters.termId);
   }
 
-  if (filters.class_section_id) {
-    query = query.eq('teaching_assignments.class_offerings.class_section_id', filters.class_section_id);
+  if (filters.classId) {
+    query = query.eq('teaching_assignments.class_offerings.class_id', filters.classId);
   }
 
-  if (filters.teacher_id) {
-    query = query.eq('teaching_assignments.teacher_id', filters.teacher_id);
+  if (filters.teacherId) {
+    query = query.eq('teaching_assignments.teacher_id', filters.teacherId);
   }
 
-  if (filters.date_from) {
-    query = query.gte('date', filters.date_from);
+  if (filters.startTime) {
+    query = query.gte('date', filters.startTime);
   }
 
-  if (filters.date_to) {
-    query = query.lte('date', filters.date_to);
+  if (filters.endTime) {
+    query = query.lte('date', filters.endTime);
   }
 
-  if (filters.day_of_week) {
+  if (filters.dayOfWeek) {
     // Filter by day of week using the time slot map
     const filteredTimeSlotIds = timeSlots
-      .filter(ts => ts.day_of_week === filters.day_of_week)
+      .filter(ts => ts.day_of_week === filters.dayOfWeek)
       .map(ts => ts.id);
     query = query.in('timeslot_id', filteredTimeSlotIds);
   }
@@ -135,7 +137,7 @@ export async function getScheduledLessonsClient(
         lesson.teaching_assignments?.class_offerings?.classes;
     })
     .map((lesson) => {
-      const timeSlot = timeSlotMap.get(lesson.timeslot_id);
+      const timeSlot = timeSlotMap.get(lesson.timeslot_id)!;
       return {
         id: lesson.id,
         date: lesson.date,

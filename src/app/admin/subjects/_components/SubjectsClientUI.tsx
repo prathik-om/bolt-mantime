@@ -70,7 +70,7 @@ import { createClient } from '@/utils/supabase/client';
 import type { Database } from "@/types/database";
 import { assignCourseToClasses, getCoursesWithClassOfferings } from "@/lib/api/course-class-offerings";
 import { validateTermHours } from "@/lib/utils";
-import { displayError, validateCourseForm } from '@/lib/utils/error-handling';
+import { displayError, validateCourseForm, validateRequired, validateLength, validateGradeLevel, validatePositiveNumber } from '@/lib/utils/error-handling';
 
 type Course = Database['public']['Tables']['courses']['Row'];
 type Department = Database['public']['Tables']['departments']['Row'];
@@ -78,9 +78,14 @@ type Class = Database['public']['Tables']['classes']['Row'];
 type ClassOffering = Database['public']['Tables']['class_offerings']['Row'];
 
 interface EnhancedCourse extends Course {
-  departments: Department | null;
-  class_offerings: Array<ClassOffering & {
-    classes: Class | null;
+  departments: { id: string; name: string; } | null;
+  class_offerings: Array<{
+    id: string;
+    class_id: string;
+    periods_per_week: number;
+    required_hours_per_term: number | null;
+    term_id: string;
+    classes: { id: string; name: string; grade_level: number; school_id: string; } | null;
   }>;
 }
 
@@ -131,7 +136,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
       hours_distribution_type: "equal" as "equal" | "custom",
       term_hours: {} as Record<string, number>,
       class_offerings: [] as Array<{
-        class_section_id: string;
+        class_id: string;
         periods_per_week: number;
         required_hours_per_term: number | null;
       }>,
@@ -246,7 +251,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
           hours_distribution_type: (subject.hours_distribution_type as 'equal' | 'custom') || 'equal',
           term_hours: parsedTermHours,
           class_offerings: enhancedSubject.class_offerings.map(offering => ({
-            class_section_id: offering.class_section_id,
+            class_id: offering.class_id,
             periods_per_week: offering.periods_per_week,
             required_hours_per_term: offering.required_hours_per_term
           })),
@@ -305,7 +310,14 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
         
         if (error) throw error;
         
-        const result = await assignCourseToClasses(editingSubject.id, values.class_offerings);
+        const result = await assignCourseToClasses(
+          editingSubject.id,
+          values.class_offerings.map(offering => ({
+            class_id: offering.class_id,
+            periods_per_week: offering.periods_per_week,
+            required_hours_per_term: offering.required_hours_per_term,
+          }))
+        );
         if (result.success) {
           toast.success(result.message || "Subject updated successfully!");
         } else {
@@ -332,7 +344,11 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
         if (error) throw error;
         
         if (data && data[0]) {
-          const result = await assignCourseToClasses(data[0].id, values.class_offerings);
+          const result = await assignCourseToClasses(data[0].id, values.class_offerings.map(offering => ({
+            class_id: offering.class_id,
+            periods_per_week: offering.periods_per_week,
+            required_hours_per_term: offering.required_hours_per_term,
+          })));
           if (result.success) {
             toast.success(result.message || "Subject created successfully!");
           } else {
@@ -461,7 +477,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
           
           <Grid>
             <Grid.Col span={3}>
-              <Stack align="center" spacing="xs">
+              <Stack align="center" gap="xs">
                 <RingProgress
                   size={80}
                   thickness={8}
@@ -480,7 +496,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
             </Grid.Col>
             
             <Grid.Col span={3}>
-              <Stack align="center" spacing="xs">
+              <Stack align="center" gap="xs">
                 <RingProgress
                   size={80}
                   thickness={8}
@@ -499,7 +515,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
             </Grid.Col>
             
             <Grid.Col span={3}>
-              <Stack align="center" spacing="xs">
+              <Stack align="center" gap="xs">
                 <RingProgress
                   size={80}
                   thickness={8}
@@ -518,7 +534,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
             </Grid.Col>
             
             <Grid.Col span={3}>
-              <Stack align="center" spacing="xs">
+              <Stack align="center" gap="xs">
                 <RingProgress
                   size={80}
                   thickness={8}
@@ -745,7 +761,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
                             <Text size="sm" fw={500} mb="xs">Class Offerings:</Text>
                             <Stack gap="xs">
                               {subject.class_offerings.map((offering, index) => (
-                                <Group key={index} gap="xs">
+                                <Group key={index} justify="space-between">
                                   <Text size="xs">
                                     {offering.classes?.name || 'Unknown Class'}:
                                   </Text>
@@ -814,7 +830,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
                     {Object.entries(schedulingMetrics.gradeCoverage)
                       .sort(([a], [b]) => parseInt(a) - parseInt(b))
                       .map(([grade, count]) => (
-                        <Group key={grade} position="apart">
+                        <Group key={grade} justify="space-between">
                           <Text size="sm">Grade {grade}</Text>
                           <Badge variant="light">{count} offerings</Badge>
                         </Group>
@@ -828,7 +844,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
                     {Object.entries(schedulingMetrics.departmentDistribution)
                       .sort(([, a], [, b]) => b - a)
                       .map(([dept, count]) => (
-                        <Group key={dept} position="apart">
+                        <Group key={dept} justify="space-between">
                           <Text size="sm">{dept}</Text>
                           <Badge variant="light">{count} courses</Badge>
                         </Group>
@@ -940,7 +956,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
                     }))
                   ]}
                   value={(() => {
-                    const selectedClassIds = form.values.class_offerings.map(o => o.class_section_id);
+                    const selectedClassIds = form.values.class_offerings.map(o => o.class_id);
                     const selectedClasses = classes.filter(cls => selectedClassIds.includes(cls.id));
                     const selectedGradeLevels = [...new Set(selectedClasses.map(cls => cls.grade_level))];
                     
@@ -950,11 +966,11 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
                     return selectedGradeLevels.map(g => g.toString());
                   })()}
                   onChange={(values) => {
-                    let newOfferings: Array<{ class_section_id: string; periods_per_week: number; required_hours_per_term: number | null }> = [];
+                    let newOfferings: Array<{ class_id: string; periods_per_week: number; required_hours_per_term: number | null }> = [];
                     
                     if (values.includes('all')) {
                       newOfferings = classes.map(cls => ({
-                        class_section_id: cls.id,
+                        class_id: cls.id,
                         periods_per_week: 5,
                         required_hours_per_term: null
                       }));
@@ -963,7 +979,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
                       const selectedClasses = classes.filter(cls => selectedGradeLevels.includes(cls.grade_level));
                       
                       newOfferings = selectedClasses.map(cls => ({
-                        class_section_id: cls.id,
+                        class_id: cls.id,
                         periods_per_week: 5,
                         required_hours_per_term: null
                       }));
@@ -979,9 +995,9 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
                     <Text size="sm" fw={500} mb="md">Class Offering Details</Text>
                     <Stack gap="sm">
                       {form.values.class_offerings.map((offering, index) => {
-                        const classInfo = classes.find(cls => cls.id === offering.class_section_id);
+                        const classInfo = classes.find(cls => cls.id === offering.class_id);
                         return (
-                          <Group key={index} position="apart">
+                          <Group key={index} justify="space-between">
                             <Text size="sm">{classInfo?.name || 'Unknown Class'}</Text>
                             <Group gap="xs">
                               <NumberInput

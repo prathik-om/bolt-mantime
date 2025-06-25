@@ -6,7 +6,7 @@ import { createClient } from '@/utils/supabase/client';
 import { useEffect, useState } from 'react';
 
 export default function DebugSchoolPage() {
-  const { schools, currentSchool, loading, error } = useSchoolContext();
+  const { schoolId, setSchoolId, schoolsLoading } = useSchoolContext();
   const [user, setUser] = useState<any>(null);
   const [userSchools, setUserSchools] = useState<any[]>([]);
   const supabase = createClient();
@@ -74,10 +74,8 @@ export default function DebugSchoolPage() {
 
       <Card withBorder mb="md">
         <Title order={3} mb="md">School Context State</Title>
-        <Text><strong>Loading:</strong> <Badge color={loading ? 'yellow' : 'green'}>{loading ? 'Yes' : 'No'}</Badge></Text>
-        <Text><strong>Error:</strong> {error || 'None'}</Text>
-        <Text><strong>Schools Count:</strong> {schools?.length || 0}</Text>
-        <Text><strong>Current School:</strong> {currentSchool?.name || 'None selected'}</Text>
+        <Text><strong>Loading:</strong> <Badge color={schoolsLoading ? 'yellow' : 'green'}>{schoolsLoading ? 'Yes' : 'No'}</Badge></Text>
+        <Text><strong>School ID:</strong> {schoolId || 'None selected'}</Text>
       </Card>
 
       <Card withBorder mb="md">
@@ -92,22 +90,20 @@ export default function DebugSchoolPage() {
 
       <Card withBorder mb="md">
         <Title order={3} mb="md">School Context Schools</Title>
-        {schools?.map((school, index) => (
-          <Text key={school.id} ml="md">
-            {index + 1}. {school.name} (ID: {school.id})
-          </Text>
-        )) || <Text c="dimmed">No schools in context</Text>}
+        {schoolId && (
+          <Text c="dimmed">School ID: {schoolId}</Text>
+        )}
       </Card>
 
-      {!currentSchool && schools && schools.length > 0 && (
+      {!schoolId && (
         <Alert color="orange" title="Issue Detected">
-          Schools are available but none is selected. This might be a timing issue.
+          School ID is not selected. This might be a timing issue.
         </Alert>
       )}
 
-      {(!schools || schools.length === 0) && user && (
-        <Alert color="red" title="No Schools Found">
-          You are logged in but no schools are associated with your account. Please create a school first.
+      {(!schoolId || schoolId === '') && user && (
+        <Alert color="red" title="No School Found">
+          You are logged in but no school is associated with your account. Please select a school first.
         </Alert>
       )}
     </Container>

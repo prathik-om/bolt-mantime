@@ -7,19 +7,22 @@ import { User } from '@supabase/supabase-js'
 interface School {
   id: string
   name: string
-  user_id: string
+  user_id: string | null
   address?: string
   phone?: string
   email?: string
   website?: string
   principal_name?: string
-  sessions_per_day?: number
-  working_days?: string[]
+  sessions_per_day?: number | null
+  working_days?: string[] | null
+  start_time?: string | null
+  end_time?: string | null
+  period_duration?: number | null
 }
 
 interface Profile {
   id: string
-  role: string
+  role: string | null
   school_id: string | null
 }
 

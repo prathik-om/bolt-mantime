@@ -1,0 +1,46 @@
+=== MANUAL BACKUP SUMMARY ===
+Backup Date: Wed Jun 25 07:49:24 IST 2025
+Backup Directory: manual_backups/20250625_074923
+
+=== BACKUP CONTENTS ===
+total 240
+drwxr-xr-x@ 9 prathik-5897  884470207    288 Jun 25 07:49 .
+drwxr-xr-x@ 3 prathik-5897  884470207     96 Jun 25 07:49 ..
+-rw-r--r--@ 1 prathik-5897  884470207    379 Jun 25 07:49 application_state.txt
+-rw-r--r--@ 1 prathik-5897  884470207    146 Jun 25 07:49 backup_summary.txt
+-rw-r--r--@ 1 prathik-5897  884470207    699 Jun 25 07:49 connection_guide.txt
+-rw-r--r--@ 1 prathik-5897  884470207  33319 Jun 25 07:49 data_migration_and_cleanup.sql
+-rw-r--r--@ 1 prathik-5897  884470207   2855 Jun 25 07:49 migration_state.txt
+-rw-r--r--@ 1 prathik-5897  884470207   3961 Jun 25 07:49 PRODUCTION_DEPLOYMENT_CHECKLIST.md
+-rw-r--r--@ 1 prathik-5897  884470207  65531 Jun 25 07:49 schema_backup.sql
+
+=== BACKUP STATUS ===
+⚠️  MANUAL BACKUP REQUIRED
+   Database connection failed, manual steps needed
+
+=== MANUAL BACKUP STEPS ===
+1. Get database connection string from Supabase dashboard
+2. Run: pg_dump --data-only 'CONNECTION_STRING' > manual_backups/20250625_074923/data_backup.sql
+3. Verify backup file size is not empty
+4. Test backup by creating a test database and importing
+
+=== ALTERNATIVE BACKUP METHODS ===
+If pg_dump fails:
+1. Use Supabase Studio > SQL Editor
+2. Export each table individually:
+   - SELECT * FROM schools;
+   - SELECT * FROM academic_years;
+   - SELECT * FROM terms;
+   - SELECT * FROM departments;
+   - SELECT * FROM courses;
+   - SELECT * FROM teachers;
+   - SELECT * FROM classes;
+   - SELECT * FROM class_offerings;
+   - SELECT * FROM teaching_assignments;
+3. Save results as CSV files
+
+=== NEXT STEPS ===
+1. Complete manual database backup
+2. Verify backup integrity
+3. Proceed with production deployment
+4. Keep backup files for rollback

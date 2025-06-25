@@ -15,8 +15,9 @@ ADD CONSTRAINT terms_academic_year_name_unique UNIQUE (academic_year_id, name);
 -- The constraint time_slots_school_day_start_unique already exists
 
 -- 4. Holidays: Prevent duplicate holidays per academic year
-ALTER TABLE public.holidays
-ADD CONSTRAINT holidays_academic_year_date_unique UNIQUE (academic_year_id, date);
+-- NOTE: This constraint will be added in a later migration after academic_year_id column is created
+-- ALTER TABLE public.holidays
+-- ADD CONSTRAINT holidays_academic_year_date_unique UNIQUE (academic_year_id, date);
 
 -- 5. Class Offerings: Prevent duplicate course offerings per class per term
 ALTER TABLE public.class_offerings
@@ -266,8 +267,7 @@ ON time_slots (school_id, day_of_week, start_time);
 CREATE INDEX IF NOT EXISTS idx_terms_academic_year_dates 
 ON terms (academic_year_id, start_date, end_date);
 
-CREATE INDEX IF NOT EXISTS idx_holidays_academic_year_date 
-ON holidays (academic_year_id, date);
+-- CREATE INDEX IF NOT EXISTS idx_holidays_academic_year_date ON holidays (academic_year_id, date);
 
 -- 9. Add comments for documentation
 COMMENT ON FUNCTION validate_teacher_workload() IS 'Validates teacher workload does not exceed 40 periods per week';

@@ -8,7 +8,7 @@ type Course = Database['public']['Tables']['courses']['Row'] & {
   } | null;
   class_offerings: Array<{
     id: string;
-    class_section_id: string;
+    class_id: string;
     periods_per_week: number;
     required_hours_per_term: number | null;
     term_id: string;
@@ -56,7 +56,7 @@ export async function getCoursesWithClassOfferings(
       departments (*),
       class_offerings (
         id,
-        class_section_id,
+        class_id,
         periods_per_week,
         required_hours_per_term,
         term_id,
@@ -90,7 +90,7 @@ export async function getCoursesWithClassOfferings(
       ...course,
       class_offerings: (course.class_offerings || []).filter(offering => {
         if (filters.termId && offering.term_id !== filters.termId) return false;
-        if (filters.classId && offering.class_section_id !== filters.classId) return false;
+        if (filters.classId && offering.class_id !== filters.classId) return false;
         return true;
       })
     }));
@@ -121,7 +121,7 @@ export async function getSchedulingDataForAI(
         course_code: course.code || null,
         department_id: course.department_id,
         department_name: course.departments.name,
-        class_id: offering.class_section_id,
+        class_id: offering.class_id,
         class_name: offering.classes.name,
         grade_level: offering.classes.grade_level,
         periods_per_week: offering.periods_per_week,
@@ -203,7 +203,7 @@ export async function assignCourseToClasses(
   // Now create the class offerings
   const classOfferingsData = classOfferings.map(offering => ({
     course_id: courseId,
-    class_section_id: offering.class_id,
+    class_id: offering.class_id,
     term_id: termId,
     periods_per_week: offering.periods_per_week,
     required_hours_per_term: offering.required_hours_per_term,

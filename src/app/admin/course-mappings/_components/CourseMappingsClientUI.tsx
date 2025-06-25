@@ -31,7 +31,7 @@ type Course = Database['public']['Tables']['courses']['Row'] & {
   } | null;
   class_offerings: Array<{
     id: string;
-    class_section_id: string;
+    class_id: string;
     periods_per_week: number;
     required_hours_per_term: number | null;
     classes: {
@@ -52,6 +52,16 @@ interface CourseMappingsClientUIProps {
   schoolId: string;
 }
 
+interface ClassOffering {
+  id: string;
+  term_id: string;
+  class_id: string;
+  course_id: string;
+  periods_per_week: number;
+  required_hours_per_term: number | null;
+  assignment_type: string | null;
+}
+
 export const CourseMappingsClientUI: React.FC<CourseMappingsClientUIProps> = ({ 
   coursesWithOfferings,
   classes,
@@ -66,7 +76,7 @@ export const CourseMappingsClientUI: React.FC<CourseMappingsClientUIProps> = ({
   const form = useForm({
     initialValues: {
       class_offerings: [] as Array<{
-        class_section_id: string;
+        class_id: string;
         periods_per_week: number;
         required_hours_per_term: number | null;
       }>,
@@ -81,7 +91,7 @@ export const CourseMappingsClientUI: React.FC<CourseMappingsClientUIProps> = ({
     
     form.setValues({
       class_offerings: course.class_offerings.map(offering => ({
-        class_section_id: offering.class_section_id,
+        class_id: offering.class_id,
         periods_per_week: offering.periods_per_week,
         required_hours_per_term: offering.required_hours_per_term
       })),
@@ -232,7 +242,7 @@ export const CourseMappingsClientUI: React.FC<CourseMappingsClientUIProps> = ({
                   leftSection={<IconPlus size={14} />}
                   onClick={() => {
                     form.insertListItem('class_offerings', {
-                      class_section_id: '',
+                      class_id: '',
                       periods_per_week: 5,
                       required_hours_per_term: null
                     });
@@ -249,10 +259,10 @@ export const CourseMappingsClientUI: React.FC<CourseMappingsClientUIProps> = ({
                       label="Class"
                       placeholder="Select class"
                       data={classOptions}
-                      value={offering.class_section_id}
+                      value={offering.class_id}
                       onChange={(value) => {
                         const newOfferings = [...form.values.class_offerings];
-                        newOfferings[index].class_section_id = value || '';
+                        newOfferings[index].class_id = value || '';
                         form.setFieldValue('class_offerings', newOfferings);
                       }}
                       style={{ flex: 1 }}

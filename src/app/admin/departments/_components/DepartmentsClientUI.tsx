@@ -133,11 +133,11 @@ export const DepartmentsClientUI: React.FC<DepartmentsClientUIProps> = ({
           ...formData,
           school_id: schoolId,
         });
-        setDepartments(prev => [...prev, newDepartment]);
+        setDepartments(prev => [...prev, { ...newDepartment, teacher_count: 0, course_count: 0 }]);
         toast.success("Department created successfully!");
       }
       
-      resetForm();
+      setIsModalOpen(false);
     } catch (error: any) {
       console.error("Error saving department:", error);
       displayError(error, toast);

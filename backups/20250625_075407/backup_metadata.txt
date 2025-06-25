@@ -1,0 +1,16 @@
+=== BACKUP METADATA ===
+Backup Date: Wed Jun 25 07:54:08 IST 2025
+Project ID: goodrlnbvcjqnddquwrn
+Backup Directory: backups/20250625_075407
+Backup Success: 
+Backup File: 
+
+=== ENVIRONMENT INFO ===
+Node version: v22.16.0
+NPM version: 10.9.2
+Supabase CLI version: 2.26.9
+
+=== CONNECTION INFO ===
+Supabase URL: https://goodrlnbvcjqnddquwrn.supabase.co
+Database URL Set: Yes
+Direct URL Set: Yes

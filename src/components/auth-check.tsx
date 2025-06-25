@@ -33,13 +33,13 @@ export default function AuthCheck({
         if (authError) {
           console.error('Auth check error:', authError);
           if (requireAuth) {
-            router.replace(redirectTo);
+            router.push(redirectTo as any);
             return;
           }
         }
 
         if (!user && requireAuth) {
-          router.replace(redirectTo);
+          router.push(redirectTo as any);
           return;
         }
 

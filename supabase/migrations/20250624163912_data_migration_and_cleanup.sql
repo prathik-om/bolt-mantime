@@ -694,16 +694,17 @@ WHERE class_offering_id NOT IN (SELECT id FROM class_offerings)
 DO $$
 DECLARE
     holiday_record RECORD;
-    term_start DATE;
-    term_end DATE;
 BEGIN
     FOR holiday_record IN 
-        SELECT h.id, h.date, h.reason, h.academic_year_id, t.start_date, t.end_date
+        SELECT h.id, h.date, h.reason
         FROM holidays h
-        JOIN academic_years t ON t.id = h.academic_year_id
     LOOP
         -- Check if holiday is within term dates
-        IF holiday_record.date < holiday_record.start_date OR holiday_record.date > holiday_record.end_date THEN
+        IF holiday_record.date < (
+            SELECT start_date FROM academic_years WHERE id = h.academic_year_id
+        ) OR holiday_record.date > (
+            SELECT end_date FROM academic_years WHERE id = h.academic_year_id
+        ) THEN
             PERFORM log_migration_issue(
                 'holidays',
                 'date_outside_term',
@@ -711,7 +712,11 @@ BEGIN
                 holiday_record.id,
                 'date',
                 holiday_record.date::TEXT,
-                'Adjust date to be within term: ' || holiday_record.start_date::TEXT || ' to ' || holiday_record.end_date::TEXT,
+                'Adjust date to be within term: ' || (
+                    SELECT start_date FROM academic_years WHERE id = h.academic_year_id
+                )::TEXT || ' to ' || (
+                    SELECT end_date FROM academic_years WHERE id = h.academic_year_id
+                )::TEXT,
                 'error'
             );
         END IF;
@@ -719,12 +724,12 @@ BEGIN
 END $$;
 
 -- Fix holidays outside term dates
-DELETE FROM holidays 
-WHERE date < (
-    SELECT start_date FROM academic_years WHERE id = holidays.academic_year_id
-) OR date > (
-    SELECT end_date FROM academic_years WHERE id = holidays.academic_year_id
-);
+-- DELETE FROM holidays
+-- WHERE date < (
+--     SELECT start_date FROM academic_years WHERE id = holidays.academic_year_id
+-- ) OR date > (
+--     SELECT end_date FROM academic_years WHERE id = holidays.academic_year_id
+-- );
 
 -- ============================================================================
 -- SECTION 13: DUPLICATE DETECTION AND CLEANUP

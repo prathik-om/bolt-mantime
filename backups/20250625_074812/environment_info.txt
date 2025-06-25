@@ -1,0 +1,8 @@
+Backup created at: Wed Jun 25 07:48:13 IST 2025
+Project ID: goodrlnbvcjqnddquwrn
+my-firebase-project
+Database URL: 
+Supabase URL: 
+Node version: v22.16.0
+NPM version: 10.9.2
+Supabase CLI version: 2.26.9

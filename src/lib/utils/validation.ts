@@ -228,12 +228,12 @@ export async function validateClassOffering(
   }
   
   // Check for duplicate class offering (same term, class, and course)
-  if (data.term_id && data.class_section_id && data.course_id) {
+  if (data.term_id && data.class_id && data.course_id) {
     let query = supabase
       .from('class_offerings')
       .select('id')
       .eq('term_id', data.term_id)
-      .eq('class_section_id', data.class_section_id)
+      .eq('class_id', data.class_id)
       .eq('course_id', data.course_id);
     
     if (excludeId) {
@@ -332,12 +332,13 @@ export async function validateHoliday(
       return { isValid: false, message: 'Invalid date format' };
     }
     
-    // Check for duplicate holidays for the same school and date
-    if (data.school_id) {
+    // Check for duplicate holidays for the same school, academic year, and date
+    if (data.school_id && 'academic_year_id' in data && typeof data.academic_year_id === 'string' && data.academic_year_id) {
       let query = supabase
         .from('holidays')
         .select('id')
         .eq('school_id', data.school_id)
+        .eq('academic_year_id', data.academic_year_id)
         .eq('date', data.date);
       
       if (excludeId) {
@@ -347,24 +348,24 @@ export async function validateHoliday(
       const { data: existing } = await query;
       
       if (existing && existing.length > 0) {
-        return { isValid: false, message: 'A holiday already exists for this date in this school' };
+        return { isValid: false, message: 'A holiday already exists for this date in this school and academic year' };
       }
     }
     
-    // Check if holiday date is within term dates
-    if (data.term_id) {
-      const { data: term } = await supabase
-        .from('terms')
+    // Check if holiday date is within academic year dates
+    if ('academic_year_id' in data && typeof data.academic_year_id === 'string' && data.academic_year_id) {
+      const { data: academicYear } = await supabase
+        .from('academic_years')
         .select('start_date, end_date')
-        .eq('id', data.term_id)
+        .eq('id', data.academic_year_id)
         .single();
       
-      if (term) {
-        const termStart = new Date(term.start_date);
-        const termEnd = new Date(term.end_date);
+      if (academicYear) {
+        const yearStart = new Date(academicYear.start_date);
+        const yearEnd = new Date(academicYear.end_date);
         
-        if (holidayDate < termStart || holidayDate > termEnd) {
-          return { isValid: false, message: 'Holiday date must be within the term dates' };
+        if (holidayDate < yearStart || holidayDate > yearEnd) {
+          return { isValid: false, message: 'Holiday date must be within the academic year dates' };
         }
       }
     }
@@ -443,13 +444,16 @@ export async function validateSchoolTimeConfiguration(schoolId: string): Promise
     return { isValid: false, message: 'School end time must be after start time' };
   }
   
+  const periodDuration = school.period_duration ?? 40; // Default to 40 minutes if null
+  const sessionsPerDay = school.sessions_per_day ?? 7; // Default to 7 if null
+  const requiredMinutes = periodDuration * sessionsPerDay;
+  
   const totalMinutes = (endTime.getTime() - startTime.getTime()) / (1000 * 60);
-  const requiredMinutes = school.period_duration * school.sessions_per_day;
   
   if (totalMinutes < requiredMinutes) {
     return { 
       isValid: false, 
-      message: `School day is too short for ${school.sessions_per_day} periods of ${school.period_duration} minutes each` 
+      message: `School day is too short for ${sessionsPerDay} periods of ${periodDuration} minutes each` 
     };
   }
   
@@ -610,14 +614,17 @@ export async function validateORToolsDataIntegrity(schoolId: string): Promise<Va
   }
   
   // 3. Check for unassigned class offerings
+  const { data: assigned } = await supabase
+    .from('teaching_assignments')
+    .select('class_offering_id');
+
+  const assignedIds = (assigned || []).map(a => a.class_offering_id);
+
   const { data: unassignedOfferings } = await supabase
     .from('class_offerings')
     .select('id, courses(name), classes(name)')
     .eq('courses.school_id', schoolId)
-    .not('id', 'in', (
-      select('class_offering_id')
-      .from('teaching_assignments')
-    ));
+    .not('id', 'in', assignedIds.length > 0 ? assignedIds : ['']);
   
   if (unassignedOfferings && unassignedOfferings.length > 0) {
     results.push({

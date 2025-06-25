@@ -28,9 +28,6 @@ export const mapConstraintError = (error: any): string => {
     if (message.includes('class_id')) {
       return 'The selected class no longer exists. Please refresh and try again.';
     }
-    if (message.includes('class_section_id')) {
-      return 'The selected class no longer exists. Please refresh and try again.';
-    }
     if (message.includes('teaching_assignment_id')) {
       return 'The selected teaching assignment no longer exists. Please refresh and try again.';
     }
@@ -329,8 +326,8 @@ export const getFieldError = (error: any): { field?: string; message: string } =
     return { field: 'teacher_id', message };
   }
   
-  if (error?.message?.includes('class_section_id')) {
-    return { field: 'class_section_id', message };
+  if (error?.message?.includes('class_id')) {
+    return { field: 'class_id', message: 'Invalid class selection' };
   }
   
   if (error?.message?.includes('course_id')) {

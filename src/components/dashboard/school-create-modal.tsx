@@ -24,7 +24,7 @@ export default function SchoolCreateModal({ opened, onClose, onSuccess }: School
     sessions_per_day: 8,
     working_days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
   })
-  const { refreshSchools } = useSchoolContext()
+  const { setSchoolId } = useSchoolContext()
   const supabase = createClient()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -50,7 +50,6 @@ export default function SchoolCreateModal({ opened, onClose, onSuccess }: School
 
       console.log('School created:', data)
       onSuccess?.()
-      refreshSchools?.()
       onClose()
       
       // Reset form
@@ -124,7 +123,7 @@ export default function SchoolCreateModal({ opened, onClose, onSuccess }: School
           <NumberInput
             label="Sessions per Day"
             value={formData.sessions_per_day}
-            onChange={(value) => setFormData({ ...formData, sessions_per_day: value || 8 })}
+            onChange={(value) => setFormData({ ...formData, sessions_per_day: typeof value === 'number' ? value : 8 })}
             min={1}
             max={12}
             required
@@ -132,8 +131,8 @@ export default function SchoolCreateModal({ opened, onClose, onSuccess }: School
 
           <Select
             label="Working Days"
-            value={formData.working_days}
-            onChange={(value) => setFormData({ ...formData, working_days: value || [] })}
+            value={formData.working_days as any}
+            onChange={(value) => setFormData({ ...formData, working_days: Array.isArray(value) ? value : [] })}
             data={[
               { value: 'monday', label: 'Monday' },
               { value: 'tuesday', label: 'Tuesday' },

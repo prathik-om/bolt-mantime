@@ -32,6 +32,11 @@ export interface TimetableFilters {
   gradeLevel?: number;
   classId?: string;
   teacherId?: string;
+  roomId?: string;
+  dayOfWeek?: number;
+  startTime?: string;
+  endTime?: string;
+  status?: string;
 }
 
 export interface TimetableData {
@@ -40,26 +45,25 @@ export interface TimetableData {
   term_name: string;
   academic_year_id: string;
   academic_year_name: string;
-  class_section_id: string;
   class_name: string;
   grade_level: number;
   course_id: string;
   course_name: string;
-  course_code: string;
+  course_code: string | null;
   department_id: string;
   department_name: string;
   teacher_id: string;
   teacher_name: string;
   teacher_email: string;
   periods_per_week: number;
-  required_hours_per_term: number;
+  required_hours_per_term: number | null;
   assignment_type: string;
   time_slot_id: string;
   day_of_week: number;
   start_time: string;
   end_time: string;
-  period_number: number;
-  slot_name: string;
+  period_number: number | null;
+  slot_name: string | null;
 }
 
 // Client-side functions using simple database functions
@@ -113,10 +117,6 @@ export async function getScheduledLessonsClient(
     query = query.eq('teaching_assignments.class_offerings.term_id', filters.termId);
   }
 
-  if (filters.class_section_id) {
-    query = query.eq('teaching_assignments.class_offerings.class_section_id', filters.class_section_id);
-  }
-
   if (filters.teacherId) {
     query = query.eq('teaching_assignments.teacher_id', filters.teacherId);
   }
@@ -127,6 +127,10 @@ export async function getScheduledLessonsClient(
 
   if (filters.gradeLevel) {
     query = query.eq('teaching_assignments.class_offerings.classes.grade_level', filters.gradeLevel);
+  }
+
+  if (filters.classId) {
+    query = query.eq('teaching_assignments.class_offerings.class_id', filters.classId);
   }
 
   const { data, error } = await query.order('date', { ascending: true });
@@ -250,7 +254,7 @@ export async function getClassCurriculumSummary(classId: string, termId: string)
   const supabase = createClient();
   
   const { data, error } = await supabase.rpc('get_class_section_curriculum_summary', {
-    p_class_section_id: classId,
+    p_class_id: classId,
     p_term_id: termId
   });
 
@@ -410,41 +414,40 @@ export async function getTimetableData(
     .select(`
       id,
       assignment_type,
-      class_offerings!inner(
+      class_offerings (
         id,
-        class_section_id,
         periods_per_week,
         required_hours_per_term,
-        terms!inner(
-          id,
-          name,
-          academic_years!inner(
-            id,
-            name
-          )
-        ),
-        classes!inner(
+        classes (
           id,
           name,
           grade_level
         ),
-        courses!inner(
+        courses (
           id,
           name,
           code,
-          departments(
+          departments (
+            id,
+            name
+          )
+        ),
+        terms (
+          id,
+          name,
+          academic_years (
             id,
             name
           )
         )
       ),
-      teachers!inner(
+      teachers (
         id,
         first_name,
         last_name,
         email
       ),
-      time_slots!inner(
+      time_slots (
         id,
         day_of_week,
         start_time,
@@ -455,48 +458,42 @@ export async function getTimetableData(
     `)
     .eq('school_id', schoolId);
 
-  // Apply filters
   if (filters?.termId) {
-    query = query.eq('class_offerings.term_id', filters.termId);
+    query = query.eq('class_offerings.terms.id', filters.termId);
   }
-
-  if (filters?.academicYearId) {
-    query = query.eq('class_offerings.terms.academic_year_id', filters.academicYearId);
+  if (filters?.teacherId) {
+    query = query.eq('teacher_id', filters.teacherId);
   }
-
   if (filters?.departmentId) {
-    query = query.eq('class_offerings.courses.department_id', filters.departmentId);
+    query = query.eq('class_offerings.courses.departments.id', filters.departmentId);
   }
-
   if (filters?.gradeLevel) {
     query = query.eq('class_offerings.classes.grade_level', filters.gradeLevel);
   }
 
-  if (filters?.classId) {
-    query = query.eq('class_offerings.class_section_id', filters.classId);
-  }
-
-  if (filters?.teacherId) {
-    query = query.eq('teacher_id', filters.teacherId);
-  }
-
   const { data, error } = await query;
-
   if (error) {
     console.error('Error fetching timetable data:', error);
-    throw new Error(`Failed to fetch timetable data: ${error.message}`);
+    throw new Error('Failed to fetch timetable data');
   }
 
-  // Transform the data to match the expected interface
+  // Transform the data to match the TimetableData interface
   const transformedData: TimetableData[] = [];
   
   for (const assignment of data || []) {
     const offering = assignment.class_offerings;
-    if (!offering || !offering.classes || !offering.courses || !offering.terms || !assignment.teachers) {
+    if (
+      !offering ||
+      typeof offering.classes !== 'object' ||
+      typeof offering.courses !== 'object' ||
+      typeof offering.terms !== 'object' ||
+      !assignment.teachers
+    ) {
       continue;
     }
 
-    const timeSlot = assignment.time_slots;
+    const timeSlotArr = assignment.time_slots;
+    const timeSlot = Array.isArray(timeSlotArr) ? timeSlotArr[0] : timeSlotArr;
     if (!timeSlot) {
       continue;
     }
@@ -505,9 +502,8 @@ export async function getTimetableData(
       id: assignment.id,
       term_id: offering.terms.id,
       term_name: offering.terms.name,
-      academic_year_id: offering.terms.academic_years.id,
-      academic_year_name: offering.terms.academic_years.name,
-      class_section_id: offering.class_section_id,
+      academic_year_id: offering.terms.academic_years?.id || '',
+      academic_year_name: offering.terms.academic_years?.name || '',
       class_name: offering.classes.name,
       grade_level: offering.classes.grade_level,
       course_id: offering.courses.id,
@@ -683,7 +679,7 @@ export async function getTeachingAssignments(
   }
 
   if (filters?.classId) {
-    query = query.eq('class_offerings.class_section_id', filters.classId);
+    query = query.eq('class_offerings.class_id', filters.classId);
   }
 
   const { data, error } = await query;

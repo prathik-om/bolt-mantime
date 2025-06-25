@@ -1,0 +1,43 @@
+=== BACKUP INSTRUCTIONS ===
+Backup Date: Wed Jun 25 07:54:57 IST 2025
+Project ID: goodrlnbvcjqnddquwrn
+
+=== MANUAL BACKUP STEPS ===
+If automatic backup failed, follow these steps:
+
+1. Go to Supabase Dashboard:
+   https://supabase.com/dashboard/project/goodrlnbvcjqnddquwrn
+
+2. Navigate to SQL Editor and run these queries:
+   -- Export schools
+   SELECT * FROM schools;
+
+   -- Export academic_years
+   SELECT * FROM academic_years;
+
+   -- Export terms
+   SELECT * FROM terms;
+
+   -- Export departments
+   SELECT * FROM departments;
+
+   -- Export courses
+   SELECT * FROM courses;
+
+   -- Export teachers
+   SELECT * FROM teachers;
+
+   -- Export classes
+   SELECT * FROM classes;
+
+   -- Export class_offerings
+   SELECT * FROM class_offerings;
+
+   -- Export teaching_assignments
+   SELECT * FROM teaching_assignments;
+
+3. Save each result as CSV files in this directory
+
+=== BACKUP STATUS ===
+❌ AUTOMATIC BACKUP FAILED
+   Manual backup required

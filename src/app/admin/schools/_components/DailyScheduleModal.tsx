@@ -191,7 +191,7 @@ export default function DailyScheduleModal({
             start_time: breakItem.start_time,
             end_time: breakItem.end_time,
             sequence: items.length + 1,
-            is_active: breakItem.is_active,
+            is_active: breakItem.is_active ?? true,
           });
           currentTime = new Date(breakEnd);
           breakIndex++;
@@ -365,7 +365,7 @@ export default function DailyScheduleModal({
             <NumberInput
               label="Sessions per Day"
               value={sessionsPerDay}
-              onChange={(value) => setSessionsPerDay(value || 8)}
+              onChange={(value) => setSessionsPerDay(typeof value === 'number' ? value : 8)}
               min={1}
               max={12}
               required
@@ -373,7 +373,7 @@ export default function DailyScheduleModal({
             <NumberInput
               label="Period Duration (minutes)"
               value={periodDuration}
-              onChange={(value) => setPeriodDuration(value || 50)}
+              onChange={(value) => setPeriodDuration(typeof value === 'number' ? value : 50)}
               min={30}
               max={120}
               required

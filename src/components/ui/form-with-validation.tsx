@@ -454,7 +454,7 @@ export const courseFields: FormField[] = [
     type: 'number',
     required: true,
     min: 1,
-    validation: validatePositiveNumber
+    validation: (value) => validatePositiveNumber(value, 'Total hours per year')
   }
 ];
 

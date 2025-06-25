@@ -106,6 +106,7 @@ export default function TeachingAssignmentsClientUI({ schoolId, initialStats }: 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
   const queryClient = useQueryClient();
   const supabase = createClient();
   const router = useRouter();
@@ -134,7 +135,8 @@ export default function TeachingAssignmentsClientUI({ schoolId, initialStats }: 
     enabled: !!schoolId
   });
 
-  // Fetch teacher workload
+  // Fetch teacher workload - DISABLED: function not available in current schema
+  /*
   const { data: teacherWorkloads, isLoading: workloadLoading } = useQuery({
     queryKey: ['teacher-workloads', schoolId],
     queryFn: async (): Promise<TeacherWorkload[]> => {
@@ -150,6 +152,9 @@ export default function TeachingAssignmentsClientUI({ schoolId, initialStats }: 
     },
     enabled: !!schoolId
   });
+  */
+  const teacherWorkloads: TeacherWorkload[] = [];
+  const workloadLoading = false;
 
   // Calculate stats
   const stats: AssignmentStats = {
@@ -239,14 +244,24 @@ export default function TeachingAssignmentsClientUI({ schoolId, initialStats }: 
     }
   };
 
-  const handleSubmit = async (values: typeof form.values) => {
+  const handleSubmit = async (values: {
+    teacher_id: string;
+    class_offering_id: string;
+    hours_per_week: number;
+    assignment_type: string;
+  }) => {
     setLoading(true);
     try {
       // Validate form data
       const formErrors = validateTeachingAssignmentForm(values);
       if (Object.keys(formErrors).length > 0) {
         const firstError = Object.values(formErrors)[0];
-        toast.error(firstError);
+        notifications.show({
+          title: 'Error',
+          message: firstError,
+          color: 'red',
+          icon: <IconAlertCircle size={16} />
+        });
         setLoading(false);
         return;
       }
@@ -277,7 +292,12 @@ export default function TeachingAssignmentsClientUI({ schoolId, initialStats }: 
           prevAssignment ? { ...prevAssignment, ...values } : null
         );
         
-        toast.success("Teaching assignment updated!");
+        notifications.show({
+          title: 'Success',
+          message: 'Teaching assignment updated!',
+          color: 'green',
+          icon: <IconCircleCheck size={16} />
+        });
       } else {
         // Insert
         const insertData = {
@@ -285,6 +305,7 @@ export default function TeachingAssignmentsClientUI({ schoolId, initialStats }: 
           class_offering_id: values.class_offering_id,
           hours_per_week: values.hours_per_week,
           assignment_type: values.assignment_type,
+          school_id: schoolId,
         };
         
         const { data, error } = await supabase
@@ -304,16 +325,30 @@ export default function TeachingAssignmentsClientUI({ schoolId, initialStats }: 
         
         // Add new assignment to local state immediately
         if (data && data[0]) {
-          setSelectedAssignment(data[0]);
+          const transformedData: ExtendedTeachingAssignment = {
+            ...data[0],
+            teacher: data[0].teachers,
+            class_offering: {
+              ...data[0].class_offerings,
+              course: data[0].class_offerings.courses,
+              class: data[0].class_offerings.classes,
+            },
+          };
+          setSelectedAssignment(transformedData);
         }
         
-        toast.success("Teaching assignment added!");
+        notifications.show({
+          title: 'Success',
+          message: 'Teaching assignment added!',
+          color: 'green',
+          icon: <IconCircleCheck size={16} />
+        });
       }
       setIsFormOpen(false);
       router.refresh();
     } catch (err: any) {
       console.error('Error in handleSubmit:', err);
-      displayError(err, toast);
+      displayError(err, notifications);
     } finally {
       setLoading(false);
     }
@@ -334,12 +369,17 @@ export default function TeachingAssignmentsClientUI({ schoolId, initialStats }: 
       // Remove assignment from local state immediately
       setSelectedAssignment(null);
       
-      toast.success("Teaching assignment deleted!");
+      notifications.show({
+        title: 'Success',
+        message: 'Teaching assignment deleted!',
+        color: 'green',
+        icon: <IconCircleCheck size={16} />
+      });
       setIsDeleteModalOpen(false);
       router.refresh();
     } catch (err: any) {
       console.error('Error in handleDelete:', err);
-      displayError(err, toast);
+      displayError(err, notifications);
     } finally {
       setLoading(false);
     }

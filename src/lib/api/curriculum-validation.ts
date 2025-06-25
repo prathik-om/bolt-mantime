@@ -52,14 +52,20 @@ export async function getCurriculumConsistencyReport(
   const supabase = createClient();
   
   const { data, error } = await supabase.rpc('get_curriculum_consistency_report', {
-    p_school_id: schoolId || null
+    p_school_id: schoolId
   });
 
   if (error) {
     throw new Error(`Report generation failed: ${error.message}`);
   }
 
-  return data || [];
+  // Map status to the correct union type
+  const mappedData = (data || []).map((item) => ({
+    ...item,
+    status: item.status === 'CONSISTENT' ? 'CONSISTENT' : 'INCONSISTENT',
+  })) as CurriculumConsistencyReport[];
+
+  return mappedData;
 }
 
 /**

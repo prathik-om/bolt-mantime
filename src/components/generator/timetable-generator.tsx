@@ -17,7 +17,7 @@ export function TimetableGenerator() {
     crossoverRate: 0.8,
   })
 
-  const { data: stats } = useSchoolStats()
+  const { stats } = useSchoolStats()
 
   const readinessCheck = () => {
     const issues = []

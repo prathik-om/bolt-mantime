@@ -16,7 +16,6 @@ export interface TeacherAssignment {
   hours_per_week: number;
   max_hours_per_week: number;
   max_courses_count: number;
-  notes?: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -137,8 +136,8 @@ export async function suggestTeachersForCourse(
 export async function createTeacherAssignment(assignmentData: {
   teacher_id: string;
   class_offering_id: string;
+  school_id: string;
   assignment_type?: 'ai' | 'manual' | 'ai_suggested';
-  notes?: string;
 }) {
   const supabase = createClient();
   
@@ -148,7 +147,7 @@ export async function createTeacherAssignment(assignmentData: {
       teacher_id: assignmentData.teacher_id,
       class_offering_id: assignmentData.class_offering_id,
       assignment_type: assignmentData.assignment_type || 'manual',
-      notes: assignmentData.notes
+      school_id: assignmentData.school_id
     })
     .select()
     .single();
@@ -167,7 +166,6 @@ export async function updateTeacherAssignment(
   updates: Partial<{
     teacher_id: string;
     assignment_type: 'ai' | 'manual' | 'ai_suggested';
-    notes: string;
   }>
 ) {
   const supabase = createClient();
@@ -216,17 +214,16 @@ export async function getTeacherAssignments(
       id,
       teacher_id,
       assignment_type,
-      notes,
-      created_at,
-      updated_at,
       teachers!inner(
         first_name,
         last_name,
         email
       ),
       class_offerings!inner(
+        id,
         periods_per_week,
         courses!inner(
+          id,
           name,
           code,
           departments!inner(name)
@@ -243,7 +240,7 @@ export async function getTeacherAssignments(
     `)
     .eq('class_offerings.terms.academic_years.school_id', schoolId)
     .eq('class_offerings.term_id', termId)
-    .order('created_at', { ascending: false });
+    .order('id', { ascending: false });
 
   if (error) {
     console.error('Error fetching teacher assignments:', error);
@@ -267,10 +264,9 @@ export async function getTeacherAssignments(
     hours_per_week: assignment.class_offerings.periods_per_week || 0,
     max_hours_per_week: 20, // Default
     max_courses_count: 5, // Default
-    notes: assignment.notes,
     is_active: true,
-    created_at: assignment.created_at,
-    updated_at: assignment.updated_at,
+    created_at: '', // Created_at doesn't exist in the teaching_assignments table
+    updated_at: '', // Updated_at doesn't exist in the teaching_assignments table
     workload_status: calculateWorkloadStatusFromUtilization(0), // Calculate based on actual workload
     utilization_percentage: 0 // Calculate based on actual workload
   }));
@@ -323,7 +319,7 @@ export async function getTeacherWorkload(
     max_hours_per_week: maxHours,
     current_courses_count: assignments?.length || 0,
     max_courses_count: 5,
-    workload_status,
+    workload_status: workloadStatus,
     utilization_percentage: utilization,
     available_hours: maxHours - currentHours,
     recommended_for_new_assignments: utilization < 80
@@ -357,7 +353,7 @@ export async function validateTeacherAssignment(
     .from('teaching_assignments')
     .select('id')
     .eq('teacher_id', teacherId)
-    .eq('class_offerings.class_section_id', classId)
+    .eq('class_offerings.class_id', classId)
     .eq('class_offerings.term_id', termId);
 
   if (error) {

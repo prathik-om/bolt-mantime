@@ -11,8 +11,18 @@ type Class = Database['public']['Tables']['classes']['Row'];
 
 export interface ClassOfferingWithDetails extends ClassOffering {
   courses: Course;
-  classes: Class;
-  terms: Term & {
+  classes: {
+    id: string;
+    name: string;
+    grade_level: number;
+    school_id: string;
+  };
+  terms: {
+    id: string;
+    name: string;
+    start_date: string;
+    end_date: string;
+    period_duration_minutes: number | null;
     academic_years: {
       id: string;
       name: string;
@@ -246,9 +256,15 @@ export async function createClassOffering(offeringData: ClassOfferingInsert): Pr
   // Auto-calculate required hours if not provided
   const enhancedData = await enhanceClassOfferingData(offeringData);
 
+  // Ensure all required fields are present
+  const finalData = {
+    ...offeringData,
+    ...enhancedData
+  } as ClassOfferingInsert;
+
   const { data, error } = await supabase
     .from('class_offerings')
-    .insert(enhancedData)
+    .insert(finalData)
     .select()
     .single();
 
@@ -351,12 +367,12 @@ export async function validateClassOfferingData(
   }
 
   // Check for duplicate class offering
-  if (data.term_id && data.class_section_id && data.course_id) {
+  if (data.term_id && data.class_id && data.course_id) {
     let query = supabase
       .from('class_offerings')
       .select('id')
       .eq('term_id', data.term_id)
-      .eq('class_section_id', data.class_section_id)
+      .eq('class_id', data.class_id)
       .eq('course_id', data.course_id);
     
     if (excludeId) {
@@ -371,11 +387,11 @@ export async function validateClassOfferingData(
   }
 
   // Validate grade level consistency
-  if (data.class_section_id && data.course_id) {
+  if (data.class_id && data.course_id) {
     const { data: classData } = await supabase
       .from('classes')
       .select('grade_level')
-      .eq('id', data.class_section_id)
+      .eq('id', data.class_id)
       .single();
 
     const { data: courseData } = await supabase
@@ -393,11 +409,11 @@ export async function validateClassOfferingData(
   }
 
   // Validate school consistency
-  if (data.class_section_id && data.course_id) {
+  if (data.class_id && data.course_id) {
     const { data: classData } = await supabase
       .from('classes')
       .select('school_id')
-      .eq('id', data.class_section_id)
+      .eq('id', data.class_id)
       .single();
 
     const { data: courseData } = await supabase
@@ -558,9 +574,15 @@ export async function bulkCreateClassOfferings(
     offerings.map(offering => enhanceClassOfferingData(offering))
   );
 
+  // Ensure all required fields are present
+  const finalOfferings = enhancedOfferings.map((enhanced, index) => ({
+    ...offerings[index],
+    ...enhanced
+  })) as ClassOfferingInsert[];
+
   const { data, error } = await supabase
     .from('class_offerings')
-    .insert(enhancedOfferings)
+    .insert(finalOfferings)
     .select();
 
   if (error) {
@@ -621,10 +643,7 @@ export async function getUnassignedClassOfferings(schoolId: string): Promise<Cla
       )
     `)
     .eq('courses.school_id', schoolId)
-    .not('id', 'in', (
-      select('class_offering_id')
-      .from('teaching_assignments')
-    ));
+    .is('teaching_assignments.id', null);
 
   if (error) {
     throw new Error(`Failed to fetch unassigned class offerings: ${error.message}`);

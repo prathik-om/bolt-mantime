@@ -1,0 +1,22 @@
+=== SUPABASE CONNECTION INFORMATION ===
+Backup Date: Wed Jun 25 07:49:23 IST 2025
+Project ID: goodrlnbvcjqnddquwrn
+my-firebase-project
+
+=== CONNECTION DETAILS ===
+To get database connection details:
+1. Go to https://supabase.com/dashboard
+2. Select your project: goodrlnbvcjqnddquwrn
+my-firebase-project
+3. Go to Settings > Database
+4. Copy the connection string
+
+=== BACKUP COMMANDS ===
+Once you have the connection string, run:
+pg_dump --data-only 'YOUR_CONNECTION_STRING' > manual_backups/20250625_074923/data_backup.sql
+
+=== ALTERNATIVE METHODS ===
+If pg_dump fails, try:
+1. Use Supabase Studio to export data
+2. Use the SQL editor to run: SELECT * FROM table_name;
+3. Copy results to CSV files

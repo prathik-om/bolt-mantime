@@ -76,6 +76,10 @@ export default function TeacherAssignmentList({
   const loadAssignments = async () => {
     try {
       setLoading(true)
+      if (!schoolId) {
+        console.error('School ID is required')
+        return
+      }
       const data = await getTeacherAssignments(schoolId, selectedAcademicYear, selectedTerm)
       setAssignments(data)
     } catch (error) {

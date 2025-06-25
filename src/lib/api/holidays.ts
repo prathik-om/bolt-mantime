@@ -194,40 +194,48 @@ export async function calculateAvailableHours(
   termStartDate: string,
   termEndDate: string
 ) {
-  const supabase = createClient()
+  // TODO: Implement or replace with working RPC function
+  console.warn('calculateAvailableHours: RPC function calculate_available_teaching_hours not found');
+  return null;
   
-  const { data, error } = await supabase
-    .rpc('calculate_available_teaching_hours', {
-      term_start_date: termStartDate,
-      term_end_date: termEndDate,
-      school_id: schoolId,
-      academic_year_id: academicYearId
-    })
+  // const supabase = createClient()
+  
+  // const { data, error } = await supabase
+  //   .rpc('calculate_available_teaching_hours', {
+  //     term_start_date: termStartDate,
+  //     term_end_date: termEndDate,
+  //     school_id: schoolId,
+  //     academic_year_id: academicYearId
+  //   })
 
-  if (error) {
-    console.error('Error calculating available hours:', error)
-    throw new Error('Failed to calculate available hours')
-  }
+  // if (error) {
+  //   console.error('Error calculating available hours:', error)
+  //   throw new Error('Failed to calculate available hours')
+  // }
 
-  return data?.[0] || null
+  // return data?.[0] || null
 }
 
 export async function validateCourseHours(
   courseId: string,
   termId: string
 ) {
-  const supabase = createClient()
+  // TODO: Implement or replace with working RPC function
+  console.warn('validateCourseHours: RPC function validate_course_hours_requirements not found');
+  return null;
   
-  const { data, error } = await supabase
-    .rpc('validate_course_hours_requirements', {
-      course_id: courseId,
-      term_id: termId
-    })
+  // const supabase = createClient()
+  
+  // const { data, error } = await supabase
+  //   .rpc('validate_course_hours_requirements', {
+  //     course_id: courseId,
+  //     term_id: termId
+  //   })
 
-  if (error) {
-    console.error('Error validating course hours:', error)
-    throw new Error('Failed to validate course hours')
-  }
+  // if (error) {
+  //   console.error('Error validating course hours:', error)
+  //   throw new Error('Failed to validate course hours')
+  // }
 
-  return data?.[0] || null
+  // return data?.[0] || null
 } 

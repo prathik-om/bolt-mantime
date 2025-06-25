@@ -151,10 +151,10 @@ export default function TimetablesClientUI({
           <CardTitle>Filters</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
               <Label htmlFor="term">Term</Label>
-              <Select onValueChange={(value) => handleFilterChange('term_id', value === 'all' ? undefined : value)}>
+              <Select onValueChange={(value) => handleFilterChange('termId', value === 'all' ? undefined : value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="All Terms" />
                 </SelectTrigger>
@@ -171,7 +171,7 @@ export default function TimetablesClientUI({
 
             <div>
               <Label htmlFor="class">Class</Label>
-              <Select onValueChange={(value) => handleFilterChange('class_section_id', value === 'all' ? undefined : value)}>
+              <Select onValueChange={(value) => handleFilterChange('classId', value === 'all' ? undefined : value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="All Classes" />
                 </SelectTrigger>
@@ -188,7 +188,7 @@ export default function TimetablesClientUI({
 
             <div>
               <Label htmlFor="teacher">Teacher</Label>
-              <Select onValueChange={(value) => handleFilterChange('teacher_id', value === 'all' ? undefined : value)}>
+              <Select onValueChange={(value) => handleFilterChange('teacherId', value === 'all' ? undefined : value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="All Teachers" />
                 </SelectTrigger>
@@ -201,42 +201,6 @@ export default function TimetablesClientUI({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-
-            <div>
-              <Label htmlFor="day">Day of Week</Label>
-              <Select onValueChange={(value) => handleFilterChange('day_of_week', value === 'all' ? undefined : parseInt(value))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All Days" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Days</SelectItem>
-                  {[1, 2, 3, 4, 5, 6, 7].map((day) => (
-                    <SelectItem key={day} value={day.toString()}>
-                      {getDayName(day)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-            <div>
-              <Label htmlFor="date-from">Date From</Label>
-              <Input
-                id="date-from"
-                type="date"
-                onChange={(e) => handleFilterChange('date_from', e.target.value || undefined)}
-              />
-            </div>
-            <div>
-              <Label htmlFor="date-to">Date To</Label>
-              <Input
-                id="date-to"
-                type="date"
-                onChange={(e) => handleFilterChange('date_to', e.target.value || undefined)}
-              />
             </div>
           </div>
         </CardContent>

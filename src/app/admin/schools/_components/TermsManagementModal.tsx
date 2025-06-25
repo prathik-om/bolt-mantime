@@ -248,7 +248,7 @@ export default function TermsManagementModal({
                   min={30}
                   max={120}
                   value={formData.period_duration_minutes}
-                  onChange={(value) => setFormData({ ...formData, period_duration_minutes: value || 50 })}
+                  onChange={(value) => setFormData({ ...formData, period_duration_minutes: typeof value === 'number' ? value : 50 })}
                   description="Duration of each teaching period in minutes"
                 />
                 <Group justify="flex-end" mt="md">

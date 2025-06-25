@@ -351,9 +351,18 @@ export default function AdminOnboarding() {
       setCreatedSchoolId(school.id);
       
       // Create admin profile using the new database function
+      const userResponse = await createClient().auth.getUser();
+      const userId = userResponse.data.user?.id;
+      
+      if (!userId) {
+        toast.error('User not authenticated');
+        setSaving(false);
+        return;
+      }
+      
       const { data: profile, error: profileError } = await createClient()
         .rpc('create_admin_profile_with_school', {
-          p_user_id: (await createClient().auth.getUser()).data.user?.id,
+          p_user_id: userId,
           p_school_id: school.id
         });
         
@@ -638,7 +647,7 @@ export default function AdminOnboarding() {
                         console.log('Working days changed:', value);
                         form.setFieldValue('school.working_days', value);
                       }}
-                      error={form.errors.school?.working_days}
+                      error={form.errors['school.working_days']}
                     >
                       <Grid>
                         <Grid.Col span={{ base: 6, sm: 3 }}>

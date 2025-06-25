@@ -1,0 +1,28 @@
+=== DATABASE BACKUP SUMMARY ===
+Backup Date: Wed Jun 25 07:48:14 IST 2025
+Backup Directory: backups/20250625_074812
+
+=== BACKUP FILES ===
+total 24
+drwxr-xr-x@ 7 prathik-5897  884470207  224 Jun 25 07:48 .
+drwxr-xr-x@ 3 prathik-5897  884470207   96 Jun 25 07:48 ..
+-rw-r--r--@ 1 prathik-5897  884470207  138 Jun 25 07:48 backup_summary.txt
+-rw-r--r--@ 1 prathik-5897  884470207  203 Jun 25 07:48 environment_info.txt
+-rw-r--r--@ 1 prathik-5897  884470207    0 Jun 25 07:48 migration_state.txt
+-rw-r--r--@ 1 prathik-5897  884470207    0 Jun 25 07:48 schema_backup.sql
+-rw-r--r--@ 1 prathik-5897  884470207   41 Jun 25 07:48 supabase_backup.sql
+
+=== BACKUP STATUS ===
+❌ MAIN BACKUP: FAILED
+   Please resolve connection issues before deployment
+
+Troubleshooting steps:
+1. Check Supabase project connection: supabase projects list
+2. Verify environment variables are set
+3. Try manual connection test
+4. Contact support if issues persist
+
+=== NEXT STEPS ===
+1. Resolve database connection issues
+2. Re-run backup script
+3. Do not proceed with deployment until backup is successful

@@ -1,0 +1,39 @@
+=== MIGRATION STATE ===
+Backup Date: Wed Jun 25 07:49:23 IST 2025
+
+=== MIGRATION FILES ===
+total 552
+drwxr-xr-x@ 17 prathik-5897  884470207    544 Jun 24 22:09 .
+drwxrwxr-x@  9 prathik-5897  884470207    288 Jun 23 23:34 ..
+-rw-r--r--@  1 prathik-5897  884470207  96863 Jun 23 23:38 20250623180743_remote_schema.sql
+-rw-r--r--@  1 prathik-5897  884470207  10424 Jun 24 18:30 20250624125938_apply_unique_constraints_and_data_integrity.sql
+-rw-r--r--@  1 prathik-5897  884470207  33007 Jun 24 22:38 20250624163912_data_migration_and_cleanup.sql
+-rw-r--r--@  1 prathik-5897  884470207  14845 Jun 24 13:10 20250625000016_schema_optimization_for_ai.sql
+-rw-r--r--@  1 prathik-5897  884470207   3398 Jun 24 11:04 20250625000017_rollback_schema_optimization.sql
+-rw-r--r--@  1 prathik-5897  884470207   9648 Jun 24 12:46 20250625000018_address_dev_lead_concerns.sql
+-rw-r--r--@  1 prathik-5897  884470207   8112 Jun 24 13:21 20250625000020_address_dev_lead_concerns.sql
+-rw-r--r--@  1 prathik-5897  884470207   4482 Jun 24 13:33 20250625000021_add_breaks_management.sql
+-rw-r--r--@  1 prathik-5897  884470207   3951 Jun 24 14:55 20250625000022_change_holidays_to_academic_year.sql
+-rw-r--r--@  1 prathik-5897  884470207    696 Jun 24 16:45 20250625000023_add_user_profile_trigger.sql
+-rw-r--r--@  1 prathik-5897  884470207    125 Jun 24 16:47 20250625000024_remove_user_profile_trigger.sql
+-rw-r--r--@  1 prathik-5897  884470207   1852 Jun 24 16:54 20250625000025_improve_profile_creation_flow.sql
+-rw-r--r--@  1 prathik-5897  884470207   1001 Jun 24 17:15 20250625000026_fix_holiday_trigger_function.sql
+-rw-r--r--@  1 prathik-5897  884470207   6072 Jun 24 22:44 20250625000027_add_unique_constraints_for_scheduling.sql
+-rw-r--r--@  1 prathik-5897  884470207  17839 Jun 24 22:49 20250625000028_add_data_integrity_checks.sql
+
+=== CURRENT MIGRATIONS ===
+supabase/migrations/20250623180743_remote_schema.sql
+supabase/migrations/20250624125938_apply_unique_constraints_and_data_integrity.sql
+supabase/migrations/20250624163912_data_migration_and_cleanup.sql
+supabase/migrations/20250625000016_schema_optimization_for_ai.sql
+supabase/migrations/20250625000017_rollback_schema_optimization.sql
+supabase/migrations/20250625000018_address_dev_lead_concerns.sql
+supabase/migrations/20250625000020_address_dev_lead_concerns.sql
+supabase/migrations/20250625000021_add_breaks_management.sql
+supabase/migrations/20250625000022_change_holidays_to_academic_year.sql
+supabase/migrations/20250625000023_add_user_profile_trigger.sql
+supabase/migrations/20250625000024_remove_user_profile_trigger.sql
+supabase/migrations/20250625000025_improve_profile_creation_flow.sql
+supabase/migrations/20250625000026_fix_holiday_trigger_function.sql
+supabase/migrations/20250625000027_add_unique_constraints_for_scheduling.sql
+supabase/migrations/20250625000028_add_data_integrity_checks.sql

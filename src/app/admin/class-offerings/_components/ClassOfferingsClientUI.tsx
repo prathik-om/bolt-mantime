@@ -42,8 +42,14 @@ import type { Database } from "@/types/database";
 import { getCoursesForGrade } from "@/lib/api/course-class-offerings";
 import { displayError, validateClassOfferingForm } from '@/lib/utils/error-handling';
 
-type ClassOffering = Database['public']['Tables']['class_offerings']['Row'] & {
-  class_section_id?: string;
+type ClassOffering = {
+  id: string;
+  class_id: string;
+  course_id: string;
+  term_id: string;
+  periods_per_week: number;
+  required_hours_per_term: number | null;
+  assignment_type: string | null;
   manual_assigned_teacher_id?: string | null;
   ai_assigned_teacher_id?: string | null;
   courses: {
@@ -125,7 +131,7 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
   const form = useForm({
     initialValues: {
       course_id: "",
-      class_section_id: "",
+      class_id: "",
       term_id: "",
       periods_per_week: 5,
       required_hours_per_term: null as number | null,
@@ -133,14 +139,14 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
     },
     validate: {
       course_id: (value) => (!value ? "Course is required" : null),
-      class_section_id: (value) => (!value ? "Class is required" : null),
+      class_id: (value) => (!value ? "Class is required" : null),
       term_id: (value) => (!value ? "Term is required" : null),
       periods_per_week: (value) => (value < 1 ? "Periods per week must be at least 1" : null),
     },
   });
 
   // Watch for changes in class to filter available courses
-  const watchedClassId = form.values.class_section_id;
+  const watchedClassId = form.values.class_id;
 
   useEffect(() => {
     const updateAvailableCourses = async () => {
@@ -192,7 +198,7 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
     setEditingOffering(offering);
     form.setValues({
       course_id: offering.course_id,
-      class_section_id: (offering.class_section_id || offering.classes?.id) ?? "",
+      class_id: (offering.class_id || offering.classes?.id) ?? "",
       term_id: offering.term_id,
       periods_per_week: offering.periods_per_week,
       required_hours_per_term: offering.required_hours_per_term,
@@ -295,7 +301,7 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
         // Insert
         const insertData = {
           course_id: values.course_id,
-          class_section_id: values.class_section_id,
+          class_id: values.class_id,
           term_id: values.term_id,
           periods_per_week: values.periods_per_week,
           required_hours_per_term: values.required_hours_per_term,
@@ -315,7 +321,44 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
         
         // Add new offering to local state immediately
         if (data && data[0]) {
-          setClassOfferings(prevOfferings => [...prevOfferings, data[0]]);
+          // Find the full course object from the courses prop
+          const fullCourse = courses.find(c => c.id === data[0].course_id) || {
+            id: data[0].course_id,
+            name: data[0].courses?.name || '',
+            code: data[0].courses?.code || null,
+            grade_level: data[0].courses?.grade_level || 0,
+            departments: null,
+            department_id: data[0].courses?.department_id || '',
+            hours_distribution_type: null,
+            school_id: '',
+            term_hours: null,
+            total_hours_per_year: null,
+          };
+          // Find the full term object from the terms prop
+          const fullTerm = terms.find(t => t.id === data[0].term_id) || {
+            id: data[0].term_id,
+            name: data[0].terms?.name || '',
+            academic_years: { id: '', name: '' },
+            end_date: '',
+            start_date: '',
+            period_duration_minutes: null,
+            academic_year_id: '',
+          };
+          const newOffering: ClassOffering = {
+            ...data[0],
+            class_id: data[0].class_id,
+            courses: {
+              ...fullCourse,
+              departments: fullCourse.departments || null,
+            },
+            classes: {
+              ...data[0].classes,
+            },
+            terms: {
+              ...fullTerm,
+            },
+          };
+          setClassOfferings(prevOfferings => [...prevOfferings, newOffering]);
         }
         
         toast.success("Class offering added!");
@@ -641,7 +684,7 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
                 value: section.id, 
                 label: `${section.name} (Grade ${section.grade_level})` 
               }))}
-              {...form.getInputProps("class_section_id")}
+              {...form.getInputProps("class_id")}
               required
             />
 

@@ -23,37 +23,25 @@ export interface TimetableLesson {
 export interface TimetableFilters {
   termId?: string;
   teacherId?: string;
-  class_section_id?: string;
+  classId?: string;
   departmentId?: string;
   gradeLevel?: number;
 }
 
 export interface TimetableData {
   id: string;
-  term_id: string;
-  term_name: string;
-  academic_year_id: string;
-  academic_year_name: string;
-  class_section_id: string;
-  class_name: string;
-  grade_level: number;
+  date: string;
+  timeslot_id: string;
+  teaching_assignment_id: string;
+  class_id: string;
   course_id: string;
-  course_name: string;
-  course_code: string | null;
-  department_id: string;
-  department_name: string;
   teacher_id: string;
-  teacher_name: string;
-  teacher_email: string;
-  periods_per_week: number;
-  required_hours_per_term: number | null;
-  assignment_type: string;
-  time_slot_id: string;
-  day_of_week: number;
+  room_id?: string;
   start_time: string;
   end_time: string;
-  period_number: number | null;
-  slot_name: string | null;
+  day_of_week: number;
+  period_number?: number;
+  slot_name?: string;
 }
 
 // Server-side function for use in server components
@@ -122,8 +110,8 @@ export async function getScheduledLessons(
     query = query.eq('teaching_assignments.teacher_id', filters.teacherId);
   }
 
-  if (filters.class_section_id) {
-    query = query.eq('teaching_assignments.class_offerings.class_section_id', filters.class_section_id);
+  if (filters.classId) {
+    query = query.eq('teaching_assignments.class_offerings.class_id', filters.classId);
   }
 
   if (filters.departmentId) {
@@ -132,22 +120,6 @@ export async function getScheduledLessons(
 
   if (filters.gradeLevel) {
     query = query.eq('teaching_assignments.class_offerings.classes.grade_level', filters.gradeLevel);
-  }
-
-  if (filters.date_from) {
-    query = query.gte('date', filters.date_from);
-  }
-
-  if (filters.date_to) {
-    query = query.lte('date', filters.date_to);
-  }
-
-  if (filters.day_of_week) {
-    // Filter by day of week using the time slot map
-    const filteredTimeSlotIds = timeSlots
-      .filter(ts => ts.day_of_week === filters.day_of_week)
-      .map(ts => ts.id);
-    query = query.in('timeslot_id', filteredTimeSlotIds);
   }
 
   const { data, error } = await query
@@ -170,7 +142,7 @@ export async function getScheduledLessons(
         lesson.teaching_assignments?.class_offerings?.classes;
     })
     .map((lesson) => {
-      const timeSlot = timeSlotMap.get(lesson.timeslot_id);
+      const timeSlot = timeSlotMap.get(lesson.timeslot_id)!;
       return {
         id: lesson.id,
         date: lesson.date,
@@ -326,7 +298,6 @@ export async function getTimetableData(
         id,
         periods_per_week,
         required_hours_per_term,
-        class_section_id,
         classes (
           id,
           name,
@@ -373,9 +344,6 @@ export async function getTimetableData(
   if (filters?.teacherId) {
     query = query.eq('teacher_id', filters.teacherId);
   }
-  if (filters?.class_section_id) {
-    query = query.eq('teaching_assignments.class_offerings.class_section_id', filters.class_section_id);
-  }
   if (filters?.departmentId) {
     query = query.eq('class_offerings.courses.departments.id', filters.departmentId);
   }
@@ -394,41 +362,36 @@ export async function getTimetableData(
   
   for (const assignment of data || []) {
     const offering = assignment.class_offerings;
-    if (!offering || !offering.classes || !offering.courses || !offering.terms || !assignment.teachers) {
+    if (
+      !offering ||
+      typeof offering.classes !== 'object' ||
+      typeof offering.courses !== 'object' ||
+      typeof offering.terms !== 'object' ||
+      !assignment.teachers
+    ) {
       continue;
     }
 
-    const timeSlot = assignment.time_slots;
+    const timeSlotArr = assignment.time_slots;
+    const timeSlot = Array.isArray(timeSlotArr) ? timeSlotArr[0] : timeSlotArr;
     if (!timeSlot) {
       continue;
     }
 
     transformedData.push({
       id: assignment.id,
-      term_id: offering.terms.id,
-      term_name: offering.terms.name,
-      academic_year_id: offering.terms.academic_years.id,
-      academic_year_name: offering.terms.academic_years.name,
-      class_section_id: offering.class_section_id,
-      class_name: offering.classes.name,
-      grade_level: offering.classes.grade_level,
+      date: new Date().toISOString().split('T')[0], // Default to today since we don't have specific date
+      timeslot_id: timeSlot.id,
+      teaching_assignment_id: assignment.id,
+      class_id: offering.classes.id,
       course_id: offering.courses.id,
-      course_name: offering.courses.name,
-      course_code: offering.courses.code,
-      department_id: offering.courses.departments?.id || '',
-      department_name: offering.courses.departments?.name || '',
       teacher_id: assignment.teachers.id,
-      teacher_name: `${assignment.teachers.first_name} ${assignment.teachers.last_name}`,
-      teacher_email: assignment.teachers.email,
-      periods_per_week: offering.periods_per_week,
-      required_hours_per_term: offering.required_hours_per_term,
-      assignment_type: assignment.assignment_type || 'ai',
-      time_slot_id: timeSlot.id,
-      day_of_week: timeSlot.day_of_week,
+      room_id: undefined, // Not available in current structure
       start_time: timeSlot.start_time,
       end_time: timeSlot.end_time,
-      period_number: timeSlot.period_number,
-      slot_name: timeSlot.slot_name,
+      day_of_week: timeSlot.day_of_week,
+      period_number: timeSlot.period_number ?? undefined,
+      slot_name: timeSlot.slot_name ?? undefined,
     });
   }
 

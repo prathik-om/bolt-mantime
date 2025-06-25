@@ -425,8 +425,8 @@ export async function generateDefaultTimeSlots(schoolId: string): Promise<TimeSl
     throw new Error('School not found');
   }
 
-  if (!school.start_time || !school.end_time || !school.period_duration || !school.sessions_per_day) {
-    throw new Error('School configuration is incomplete. Please set start time, end time, period duration, and sessions per day.');
+  if (!school.start_time || !school.end_time || !school.sessions_per_day) {
+    throw new Error('School configuration is incomplete. Please set start time, end time, and sessions per day.');
   }
 
   const workingDays = school.working_days || ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
@@ -442,9 +442,11 @@ export async function generateDefaultTimeSlots(schoolId: string): Promise<TimeSl
     if (dayOfWeek === undefined) return;
 
     const startTime = new Date(`2000-01-01T${school.start_time}`);
-    const periodDurationMs = school.period_duration * 60 * 1000; // Convert minutes to milliseconds
+    const periodDuration = school.period_duration ?? 40; // Default to 40 minutes if null
+    const periodDurationMs = periodDuration * 60 * 1000; // Convert minutes to milliseconds
     
-    for (let i = 0; i < school.sessions_per_day; i++) {
+    const sessionsPerDay = school.sessions_per_day ?? 7; // Default to 7 if null
+    for (let i = 0; i < sessionsPerDay; i++) {
       const periodStart = new Date(startTime.getTime() + (i * periodDurationMs));
       const periodEnd = new Date(periodStart.getTime() + periodDurationMs);
       

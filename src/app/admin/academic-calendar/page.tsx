@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import AcademicCalendarClientUI from './_components/AcademicCalendarClientUI';
 import { Title, Text, Container, Stack, Alert } from '@mantine/core';
-import { getAcademicYearsWithTerms } from "@/lib/api/academic-calendar";
+import { getAcademicYearsWithTerms, type AcademicYearWithTerms } from "@/lib/api/academic-calendar";
 
 export default async function AcademicCalendarPage() {
   const supabase = await createClient();
@@ -64,7 +64,7 @@ export default async function AcademicCalendarPage() {
   }
 
   // Fetch academic years with their terms for the user's school
-  let academicYearsWithTerms = [];
+  let academicYearsWithTerms: AcademicYearWithTerms[] = [];
   let fetchError = null;
 
   try {

@@ -13,7 +13,7 @@ export interface TeachingAssignmentWithDetails extends TeachingAssignment {
     courses: {
       id: string;
       name: string;
-      code: string;
+      code: string | null;
       department_id: string;
     };
     classes: {
@@ -404,7 +404,7 @@ export async function getTeacherWorkloadSummary(schoolId: string): Promise<Teach
       max_periods_per_week: teacher.max_periods_per_week,
       workload_percentage: workloadPercentage,
       assignments: assignments.map(assignment => ({
-        class_offering_id: assignment.class_offering_id,
+        class_offering_id: '', // Not available in current structure; align with schema if needed
         course_name: '', // Would need to join with courses table
         class_name: '', // Would need to join with classes table
         term_name: '', // Would need to join with terms table
@@ -588,7 +588,19 @@ export async function validateTeachingAssignment(
  */
 export async function getUnassignedClassOfferings(schoolId: string): Promise<ClassOffering[]> {
   const supabase = createClient();
-  
+
+  // Step 1: Get all assigned class_offering_ids
+  const { data: assigned, error: assignedError } = await supabase
+    .from('teaching_assignments')
+    .select('class_offering_id');
+
+  if (assignedError) {
+    throw new Error(`Failed to fetch assigned class offerings: ${assignedError.message}`);
+  }
+
+  const assignedIds = (assigned || []).map(a => a.class_offering_id);
+
+  // Step 2: Get unassigned class offerings
   const { data, error } = await supabase
     .from('class_offerings')
     .select(`
@@ -612,10 +624,7 @@ export async function getUnassignedClassOfferings(schoolId: string): Promise<Cla
       )
     `)
     .eq('courses.school_id', schoolId)
-    .not('id', 'in', (
-      select('class_offering_id')
-      .from('teaching_assignments')
-    ));
+    .not('id', 'in', assignedIds.length > 0 ? assignedIds : ['']);
 
   if (error) {
     throw new Error(`Failed to fetch unassigned class offerings: ${error.message}`);

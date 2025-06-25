@@ -33,7 +33,7 @@ import {
   IconCalendar, 
   IconClock, 
   IconSchool,
-  IconBookOpen,
+  IconBook,
   IconUsers,
   IconCalendarEvent,
   IconInfoCircle,
@@ -335,7 +335,7 @@ const AcademicCalendarClientUI: React.FC<AcademicCalendarClientUIProps> = ({
         <Tabs.Tab value="calendar" leftSection={<IconCalendarEvent size={16} />}>
           Academic Calendar
         </Tabs.Tab>
-        <Tabs.Tab value="terms" leftSection={<IconBookOpen size={16} />}>
+        <Tabs.Tab value="terms" leftSection={<IconBook size={16} />}>
           Terms Management
         </Tabs.Tab>
       </Tabs.List>
@@ -363,7 +363,7 @@ const AcademicCalendarClientUI: React.FC<AcademicCalendarClientUIProps> = ({
                 <Grid.Col span={6}>
                   <Paper p="md" withBorder>
                     <Group>
-                      <IconBookOpen size={24} color="green" />
+                      <IconBook size={24} color="green" />
                       <div>
                         <Text size="sm" c="dimmed">Current Term</Text>
                         <Text fw={500}>

@@ -11,8 +11,9 @@ export async function getTeachers(schoolId: string) {
     .from('teachers')
     .select(`
       *,
-      teacher_qualifications (
+      teacher_departments (
         department_id,
+        is_primary,
         departments (
           id,
           name
@@ -82,10 +83,11 @@ export async function getTeacherWithQualifications(id: string): Promise<any> {
     .from('teachers')
     .select(`
       id, first_name, last_name, email, max_periods_per_week, school_id,
-      qualifications:teacher_qualifications(
+      teacher_departments(
         id,
         teacher_id,
         department_id,
+        is_primary,
         department:departments(id, name)
       )
     `)
@@ -111,7 +113,7 @@ export async function addTeacherQualification(data: {
 }): Promise<void> {
   const supabase = createClient()
   const { error } = await supabase
-    .from('teacher_qualifications')
+    .from('teacher_departments')
     .insert({
       teacher_id: data.teacherId,
       department_id: data.departmentId,
@@ -128,7 +130,7 @@ export async function removeTeacherQualification(data: {
 }): Promise<void> {
   const supabase = createClient()
   const { error } = await supabase
-    .from('teacher_qualifications')
+    .from('teacher_departments')
     .delete()
     .eq('teacher_id', data.teacherId)
     .eq('department_id', data.departmentId);
@@ -141,7 +143,7 @@ export async function removeTeacherQualification(data: {
 export async function getTeacherConstraints(teacherId: string): Promise<any[]> {
   const supabase = createClient()
   const { data, error } = await supabase
-    .from('teacher_constraints')
+    .from('teacher_time_constraints')
     .select(`
       *,
       time_slot:time_slots(*)
@@ -165,7 +167,7 @@ export async function addTeacherConstraint(data: {
 }): Promise<void> {
   const supabase = createClient()
   const { error } = await supabase
-    .from('teacher_constraints')
+    .from('teacher_time_constraints')
     .insert({
       teacher_id: data.teacherId,
       time_slot_id: data.timeSlotId,
@@ -182,7 +184,7 @@ export async function addTeacherConstraint(data: {
 export async function removeTeacherConstraint(id: string): Promise<void> {
   const supabase = createClient()
   const { error } = await supabase
-    .from('teacher_constraints')
+    .from('teacher_time_constraints')
     .delete()
     .eq('id', id);
 

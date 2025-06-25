@@ -35,7 +35,13 @@ export async function getDepartments(schoolId: string): Promise<Department[]> {
     throw new Error(`Failed to fetch departments: ${error.message}`);
   }
 
-  return data || [];
+  return (data || []).map(dep => ({
+    ...dep,
+    code: dep.code ?? '',
+    description: dep.description ?? undefined,
+    created_at: dep.created_at ?? '',
+    updated_at: dep.updated_at ?? ''
+  }));
 }
 
 export async function getDepartmentById(departmentId: string): Promise<Department | null> {
@@ -52,7 +58,15 @@ export async function getDepartmentById(departmentId: string): Promise<Departmen
     throw new Error(`Failed to fetch department: ${error.message}`);
   }
 
-  return data;
+  if (!data) return null;
+
+  return {
+    ...data,
+    code: data.code ?? '',
+    description: data.description ?? undefined,
+    created_at: data.created_at ?? '',
+    updated_at: data.updated_at ?? ''
+  };
 }
 
 export async function createDepartment(departmentData: {
@@ -74,7 +88,13 @@ export async function createDepartment(departmentData: {
     throw new Error(`Failed to create department: ${error.message}`);
   }
 
-  return data;
+  return {
+    ...data,
+    code: data.code ?? '',
+    description: data.description ?? undefined,
+    created_at: data.created_at ?? '',
+    updated_at: data.updated_at ?? ''
+  };
 }
 
 export async function updateDepartment(
@@ -99,7 +119,13 @@ export async function updateDepartment(
     throw new Error(`Failed to update department: ${error.message}`);
   }
 
-  return data;
+  return {
+    ...data,
+    code: data.code ?? '',
+    description: data.description ?? undefined,
+    created_at: data.created_at ?? '',
+    updated_at: data.updated_at ?? ''
+  };
 }
 
 export async function deleteDepartment(departmentId: string): Promise<void> {
@@ -266,8 +292,8 @@ export async function getTeacherDepartments(schoolId: string): Promise<TeacherDe
     id: td.id,
     teacher_id: td.teacher_id,
     department_id: td.department_id,
-    is_primary: td.is_primary,
-    created_at: td.created_at,
+    is_primary: td.is_primary ?? false,
+    created_at: td.created_at ?? '',
     teacher_name: `${td.teachers.first_name} ${td.teachers.last_name}`,
     department_name: td.departments.name
   }));

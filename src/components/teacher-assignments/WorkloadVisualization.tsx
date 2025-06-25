@@ -10,8 +10,8 @@ import {
   IconUsers, 
   IconClock,
   IconAlertTriangle,
-  IconCheckCircle,
-  IconXCircle
+  IconCircleCheck,
+  IconX
 } from '@tabler/icons-react'
 import { getTeacherWorkloadInsights } from '@/lib/api/teacher-assignments'
 import { useSchoolContext } from '@/hooks/use-school-context'
@@ -54,8 +54,19 @@ export default function WorkloadVisualization({
   const loadWorkloadData = async () => {
     try {
       setLoading(true)
+      if (!schoolId) {
+        console.error('School ID is required')
+        return
+      }
       const data = await getTeacherWorkloadInsights(schoolId, academicYear, term)
-      setWorkloadData(data)
+      
+      // Type guard to check if data is an array of WorkloadInsight objects
+      const isValidWorkloadData = Array.isArray(data) && 
+        data.length > 0 && 
+        'teacher_id' in data[0] && 
+        'teacher_name' in data[0]
+      
+      setWorkloadData(isValidWorkloadData ? (data as unknown as WorkloadInsight[]) : [])
     } catch (error) {
       console.error('Error loading workload data:', error)
     } finally {
@@ -75,10 +86,10 @@ export default function WorkloadVisualization({
 
   const getWorkloadStatusIcon = (status: string) => {
     switch (status) {
-      case 'available': return <IconCheckCircle className="w-4 h-4" />
+      case 'available': return <IconCircleCheck className="w-4 h-4" />
       case 'moderate': return <IconClock className="w-4 h-4" />
       case 'high': return <IconAlertTriangle className="w-4 h-4" />
-      case 'overloaded': return <IconXCircle className="w-4 h-4" />
+      case 'overloaded': return <IconX className="w-4 h-4" />
       default: return <IconClock className="w-4 h-4" />
     }
   }
@@ -193,7 +204,7 @@ export default function WorkloadVisualization({
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Available Teachers</CardTitle>
-            <IconCheckCircle className="h-4 w-4 text-muted-foreground" />
+            <IconCircleCheck className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{availableTeachers}</div>
@@ -222,7 +233,7 @@ export default function WorkloadVisualization({
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
-                    <IconCheckCircle className="w-4 h-4 text-green-600" />
+                    <IconCircleCheck className="w-4 h-4 text-green-600" />
                     <span className="text-sm font-medium">Available</span>
                     <Badge className={getWorkloadStatusColor('available')}>
                       {availableTeachers}
@@ -285,7 +296,7 @@ export default function WorkloadVisualization({
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
-                    <IconXCircle className="w-4 h-4 text-red-600" />
+                    <IconX className="w-4 h-4 text-red-600" />
                     <span className="text-sm font-medium">Overloaded</span>
                     <Badge className={getWorkloadStatusColor('overloaded')}>
                       {overloadedTeachers}
@@ -379,7 +390,7 @@ export default function WorkloadVisualization({
                 .map((teacher) => (
                   <div key={teacher.teacher_id} className="flex items-center justify-between p-3 border rounded-lg bg-green-50">
                     <div className="flex items-center space-x-3">
-                      <IconCheckCircle className="w-5 h-5 text-green-600" />
+                      <IconCircleCheck className="w-5 h-5 text-green-600" />
                       <div>
                         <p className="font-medium">{teacher.teacher_name}</p>
                         <p className="text-sm text-muted-foreground">{teacher.department_name}</p>
