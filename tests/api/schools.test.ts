@@ -9,7 +9,7 @@ jest.mock('@/lib/api/schools', () => ({
   deleteSchool: jest.fn(),
 }))
 
-import { createSchool, getSchools, getSchoolById, updateSchool, deleteSchool } from '@/lib/api/schools'
+import { createSchool, getSchools, getSchool, updateSchool, deleteSchool } from '@/lib/api/schools'
 
 describe('Schools API', () => {
   let mockSupabase: any
@@ -122,16 +122,16 @@ describe('Schools API', () => {
     })
   })
 
-  describe('getSchoolById', () => {
+  describe('getSchool', () => {
     it('should retrieve a school by ID successfully', async () => {
       const testSchool = generateTestSchool()
       const mockResponse = createTestSuccess(testSchool)
       
-      ;(getSchoolById as jest.Mock).mockResolvedValue(mockResponse)
+      ;(getSchool as jest.Mock).mockResolvedValue(mockResponse)
 
-      const result = await getSchoolById(testSchool.id)
+      const result = await getSchool(testSchool.id)
 
-      expect(getSchoolById).toHaveBeenCalledWith(testSchool.id)
+      expect(getSchool).toHaveBeenCalledWith(testSchool.id)
       expect(result).toEqual(mockResponse)
       expect(result.data).toEqual(testSchool)
       expect(result.error).toBeNull()
@@ -141,9 +141,9 @@ describe('Schools API', () => {
       const nonExistentId = 'non-existent-id'
       const mockError = createTestError('School not found', 404)
       
-      ;(getSchoolById as jest.Mock).mockResolvedValue(mockError)
+      ;(getSchool as jest.Mock).mockResolvedValue(mockError)
 
-      const result = await getSchoolById(nonExistentId)
+      const result = await getSchool(nonExistentId)
 
       expect(result.error).toBeDefined()
       expect(result.error.status).toBe(404)
@@ -154,9 +154,9 @@ describe('Schools API', () => {
       const invalidId = 'invalid-uuid'
       const mockError = createTestError('Invalid school ID format', 400)
       
-      ;(getSchoolById as jest.Mock).mockResolvedValue(mockError)
+      ;(getSchool as jest.Mock).mockResolvedValue(mockError)
 
-      const result = await getSchoolById(invalidId)
+      const result = await getSchool(invalidId)
 
       expect(result.error).toBeDefined()
       expect(result.error.message).toContain('Invalid school ID format')

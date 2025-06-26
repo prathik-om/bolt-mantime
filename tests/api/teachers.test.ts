@@ -12,15 +12,12 @@ jest.mock('@/lib/api/teachers', () => ({
   removeTeacherFromDepartment: jest.fn(),
 }))
 
-import { 
-  createTeacher, 
-  getTeachers, 
-  getTeacherById, 
-  updateTeacher, 
-  deleteTeacher,
-  getTeachersBySchool,
-  assignTeacherToDepartment,
-  removeTeacherFromDepartment
+import {
+  createTeacher,
+  getTeachers,
+  getTeacher,
+  updateTeacher,
+  deleteTeacher
 } from '@/lib/api/teachers'
 
 describe('Teachers API', () => {
@@ -153,16 +150,16 @@ describe('Teachers API', () => {
     })
   })
 
-  describe('getTeacherById', () => {
+  describe('getTeacher', () => {
     it('should retrieve a teacher by ID successfully', async () => {
       const testTeacher = generateTestTeacher('test-school-id')
       const mockResponse = createTestSuccess(testTeacher)
       
-      ;(getTeacherById as jest.Mock).mockResolvedValue(mockResponse)
+      ;(getTeacher as jest.Mock).mockResolvedValue(mockResponse)
 
-      const result = await getTeacherById(testTeacher.id)
+      const result = await getTeacher(testTeacher.id)
 
-      expect(getTeacherById).toHaveBeenCalledWith(testTeacher.id)
+      expect(getTeacher).toHaveBeenCalledWith(testTeacher.id)
       expect(result).toEqual(mockResponse)
       expect(result.data).toEqual(testTeacher)
       expect(result.error).toBeNull()
@@ -172,9 +169,9 @@ describe('Teachers API', () => {
       const nonExistentId = 'non-existent-id'
       const mockError = createTestError('Teacher not found', 404)
       
-      ;(getTeacherById as jest.Mock).mockResolvedValue(mockError)
+      ;(getTeacher as jest.Mock).mockResolvedValue(mockError)
 
-      const result = await getTeacherById(nonExistentId)
+      const result = await getTeacher(nonExistentId)
 
       expect(result.error).toBeDefined()
       expect(result.error.status).toBe(404)
@@ -185,9 +182,9 @@ describe('Teachers API', () => {
       const invalidId = 'invalid-uuid'
       const mockError = createTestError('Invalid teacher ID format', 400)
       
-      ;(getTeacherById as jest.Mock).mockResolvedValue(mockError)
+      ;(getTeacher as jest.Mock).mockResolvedValue(mockError)
 
-      const result = await getTeacherById(invalidId)
+      const result = await getTeacher(invalidId)
 
       expect(result.error).toBeDefined()
       expect(result.error.message).toContain('Invalid teacher ID format')

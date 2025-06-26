@@ -1,7 +1,7 @@
 import { createClient } from '@/utils/supabase/client';
 import type { Database } from '@/lib/database.types';
 
-type Course = Database['public']['Tables']['courses']['Row'] & {
+type Subject = Database['public']['Tables']['subjects']['Row'] & {
   departments: {
     id: string;
     name: string;
@@ -23,9 +23,9 @@ type Course = Database['public']['Tables']['courses']['Row'] & {
 
 type SchedulingData = {
   class_offering_id: string;
-  course_id: string;
-  course_name: string;
-  course_code: string | null;
+  subject_id: string;
+  subject_name: string;
+  subject_code: string | null;
   department_id: string;
   department_name: string;
   class_id: string;
@@ -39,7 +39,7 @@ type SchedulingData = {
   academic_year_id: string;
 };
 
-export async function getCoursesWithClassOfferings(
+export async function getSubjectsWithClassOfferings(
   schoolId: string,
   filters?: {
     termId?: string;
@@ -47,10 +47,10 @@ export async function getCoursesWithClassOfferings(
     gradeLevel?: number;
     classId?: string;
   }
-): Promise<Course[]> {
+): Promise<Subject[]> {
   const supabase = createClient();
   let query = supabase
-    .from('courses')
+    .from('subjects')
     .select(`
       *,
       departments (*),
@@ -80,15 +80,15 @@ export async function getCoursesWithClassOfferings(
 
   const { data, error } = await query;
   if (error) {
-    console.error('Error fetching courses with class offerings:', error);
-    throw new Error('Failed to fetch courses with class offerings');
+    console.error('Error fetching subjects with class offerings:', error);
+    throw new Error('Failed to fetch subjects with class offerings');
   }
 
   // Optionally filter class_offerings by term or class
   if (filters?.termId || filters?.classId) {
-    return (data || []).map(course => ({
-      ...course,
-      class_offerings: (course.class_offerings || []).filter(offering => {
+    return (data || []).map(subject => ({
+      ...subject,
+      class_offerings: (subject.class_offerings || []).filter(offering => {
         if (filters.termId && offering.term_id !== filters.termId) return false;
         if (filters.classId && offering.class_id !== filters.classId) return false;
         return true;
@@ -108,25 +108,25 @@ export async function getSchedulingDataForAI(
     classId?: string;
   }
 ): Promise<SchedulingData[]> {
-  const courses = await getCoursesWithClassOfferings(schoolId, filters);
+  const subjects = await getSubjectsWithClassOfferings(schoolId, filters);
   const result: SchedulingData[] = [];
-  for (const course of courses) {
-    for (const offering of course.class_offerings) {
-      if (!offering.classes || !course.departments) continue;
+  for (const subject of subjects) {
+    for (const offering of subject.class_offerings) {
+      if (!offering.classes || !subject.departments) continue;
       if (filters?.gradeLevel && offering.classes.grade_level !== filters.gradeLevel) continue;
       result.push({
         class_offering_id: offering.id,
-        course_id: course.id,
-        course_name: course.name,
-        course_code: course.code || null,
-        department_id: course.department_id,
-        department_name: course.departments.name,
+        subject_id: subject.id,
+        subject_name: subject.name,
+        subject_code: subject.code || null,
+        department_id: subject.department_id,
+        department_name: subject.departments.name,
         class_id: offering.class_id,
         class_name: offering.classes.name,
         grade_level: offering.classes.grade_level,
         periods_per_week: offering.periods_per_week,
         required_hours_per_term: offering.required_hours_per_term,
-        total_hours_per_year: course.total_hours_per_year,
+        total_hours_per_year: subject.total_hours_per_year,
         term_id: offering.term_id,
         term_name: "Default Term",
         academic_year_id: "default",
@@ -221,14 +221,14 @@ export async function assignCourseToClasses(
   return { success: true, message: 'Course and class offerings created successfully.' };
 }
 
-export async function getCoursesForGrade(
+export async function getSubjectsForGrade(
   schoolId: string,
   gradeLevel: number,
   classId?: string
 ) {
   const supabase = createClient();
   let query = supabase
-    .from('courses')
+    .from('subjects')
     .select(`
       *,
       departments (*)
@@ -237,8 +237,8 @@ export async function getCoursesForGrade(
     .eq('grade_level', gradeLevel);
   const { data, error } = await query;
   if (error) {
-    console.error('Error fetching courses for grade:', error);
-    throw new Error('Failed to fetch courses for grade');
+    console.error('Error fetching subjects for grade:', error);
+    throw new Error('Failed to fetch subjects for grade');
   }
   return data || [];
-} 
+}

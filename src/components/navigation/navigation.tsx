@@ -12,7 +12,19 @@ import {
   Zap, 
   Calendar,
   Menu,
-  X
+  X,
+  IconDashboard,
+  IconSchool,
+  IconBuildingCommunity,
+  IconUsers,
+  IconCertificate,
+  IconUsersGroup,
+  IconBook,
+  IconLink,
+  IconCalendar,
+  IconClock,
+  IconClipboardList,
+  IconTable
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -25,6 +37,69 @@ const menuItems = [
   { id: 'generator', label: 'AI Generator', icon: Zap, href: '/generator' },
   { id: 'timetables', label: 'Timetables', icon: Calendar, href: '/admin/timetables' },
 ]
+
+const adminLinks = [
+  {
+    label: 'Dashboard',
+    href: '/admin/dashboard',
+    icon: IconDashboard
+  },
+  {
+    label: 'Schools',
+    href: '/admin/schools',
+    icon: IconSchool
+  },
+  {
+    label: 'Departments',
+    href: '/admin/departments',
+    icon: IconBuildingCommunity
+  },
+  {
+    label: 'Teachers',
+    href: '/admin/teachers',
+    icon: IconUsers
+  },
+  {
+    label: 'Teacher Qualifications',
+    href: '/admin/teacher-qualifications',
+    icon: IconCertificate
+  },
+  {
+    label: 'Classes',
+    href: '/admin/classes',
+    icon: IconUsersGroup
+  },
+  {
+    label: 'Subjects',
+    href: '/admin/subjects',
+    icon: IconBook
+  },
+  {
+    label: 'Grade-Subject Mappings',
+    href: '/admin/grade-subjects',
+    icon: IconLink
+  },
+  {
+    label: 'Academic Calendar',
+    href: '/admin/academic-calendar',
+    icon: IconCalendar
+  },
+  {
+    label: 'Time Slots',
+    href: '/admin/time-slots',
+    icon: IconClock
+  },
+  {
+    label: 'Teaching Assignments',
+    href: '/admin/teaching-assignments',
+    icon: IconClipboardList
+  },
+  {
+    label: 'Timetables',
+    href: '/admin/timetables',
+    icon: IconTable
+  }
+];
 
 export function Navigation() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)

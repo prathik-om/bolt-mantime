@@ -39,24 +39,29 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { createClient } from '@/utils/supabase/client';
 import type { Database } from "@/types/database";
-import { getCoursesForGrade } from "@/lib/api/course-class-offerings";
+import { getSubjectsForGrade } from "@/lib/api/subject-class-offerings";
 import { displayError, validateClassOfferingForm } from '@/lib/utils/error-handling';
+
+type Subject = Database['public']['Tables']['subjects']['Row'] & {
+  departments?: {
+    id: string;
+    name: string;
+  } | null;
+};
 
 type ClassOffering = {
   id: string;
   class_id: string;
-  course_id: string;
+  subject_id: string;
   term_id: string;
   periods_per_week: number;
   required_hours_per_term: number | null;
-  assignment_type: string | null;
-  manual_assigned_teacher_id?: string | null;
-  ai_assigned_teacher_id?: string | null;
-  courses: {
+  subjects: {
     id: string;
     name: string;
     code: string | null;
     grade_level: number;
+    department_id: string;
     departments: {
       id: string;
       name: string;
@@ -65,15 +70,8 @@ type ClassOffering = {
   classes: {
     id: string;
     name: string;
-    grade_level: number;
-  };
-  terms: {
-    id: string;
-    name: string;
-    academic_years: {
-      id: string;
-      name: string;
-    };
+    grade_id: number;
+    section: string;
   };
 };
 
@@ -108,6 +106,8 @@ interface ClassOfferingsClientUIProps {
   terms: Term[];
   teachers: Teacher[];
   schoolId: string;
+  subjects: Subject[];
+  departments: Department[];
 }
 
 export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({ 
@@ -116,93 +116,101 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
   allClasses,
   terms,
   teachers,
-  schoolId 
+  schoolId,
+  subjects,
+  departments
 }) => {
   const [classOfferings, setClassOfferings] = useState<ClassOffering[]>(initialClassOfferings);
   const [modalOpen, setModalOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<ClassOffering | null>(null);
   const [editingOffering, setEditingOffering] = useState<ClassOffering | null>(null);
   const [loading, setLoading] = useState(false);
-  const [availableCourses, setAvailableCourses] = useState<Course[]>(courses);
+  const [availableSubjects, setAvailableSubjects] = useState<Subject[]>(subjects);
   const [filterTerm, setFilterTerm] = useState<string>('all');
   const [filterGrade, setFilterGrade] = useState<string>('all');
   const router = useRouter();
 
   const form = useForm({
     initialValues: {
-      course_id: "",
+      subject_id: "",
       class_id: "",
       term_id: "",
       periods_per_week: 5,
       required_hours_per_term: null as number | null,
-      assignment_type: "ai" as "ai" | "manual" | "ai_suggested",
     },
     validate: {
-      course_id: (value) => (!value ? "Course is required" : null),
+      subject_id: (value) => (!value ? "Subject is required" : null),
       class_id: (value) => (!value ? "Class is required" : null),
       term_id: (value) => (!value ? "Term is required" : null),
       periods_per_week: (value) => (value < 1 ? "Periods per week must be at least 1" : null),
     },
   });
 
-  // Watch for changes in class to filter available courses
+  // Watch for changes in class to filter available subjects
   const watchedClassId = form.values.class_id;
 
   useEffect(() => {
-    const updateAvailableCourses = async () => {
-      if (watchedClassId) {
-        const selectedClass = allClasses.find(cls => cls.id === watchedClassId);
-        if (selectedClass) {
-          try {
-            // Get courses available for this specific class
-            const availableCoursesForClass = await getCoursesForGrade(
-              schoolId, 
-              selectedClass.grade_level, 
-              watchedClassId
-            );
-            
-            // Also get courses available for the grade level in general (no specific class)
-            const availableCoursesForGradeLevel = await getCoursesForGrade(
-              schoolId, 
-              selectedClass.grade_level
-            );
-            
-            // Combine both sets of courses, removing duplicates
-            const allAvailableCourses = [...availableCoursesForClass, ...availableCoursesForGradeLevel];
-            const uniqueCourses = allAvailableCourses.filter((course, index, self) => 
-              index === self.findIndex(c => c.id === course.id)
-            );
-            
-            setAvailableCourses(uniqueCourses);
-          } catch (error) {
-            console.error('Error fetching available courses:', error);
-            setAvailableCourses(courses);
-          }
-        }
-      } else {
-        setAvailableCourses(courses);
+    if (!watchedClassId || !allClasses) return;
+
+    const selectedClass = allClasses.find(c => c.id === watchedClassId);
+    if (!selectedClass) {
+      setAvailableSubjects(subjects);
+      return;
+    }
+
+    const updateAvailableSubjects = async () => {
+      try {
+        // Get subjects available for this specific class
+        const availableSubjectsForClass = await getSubjectsForGrade(
+          schoolId, 
+          selectedClass.grade_level, 
+          selectedClass.id
+        );
+
+        // Also get subjects available for the grade level in general (no specific class)
+        const availableSubjectsForGradeLevel = await getSubjectsForGrade(
+          schoolId, 
+          selectedClass.grade_level
+        );
+
+        // Combine both sets of subjects, removing duplicates
+        const allAvailableSubjects = [...availableSubjectsForClass, ...availableSubjectsForGradeLevel];
+        const uniqueSubjects = allAvailableSubjects.filter((subject, index, self) =>
+          index === self.findIndex((s) => s.id === subject.id)
+        );
+
+        setAvailableSubjects(uniqueSubjects);
+      } catch (error) {
+        console.error('Error fetching available subjects:', error);
+        setAvailableSubjects(subjects);
       }
     };
 
-    updateAvailableCourses();
-  }, [watchedClassId, allClasses, schoolId, courses]);
+    updateAvailableSubjects();
+  }, [watchedClassId, allClasses, schoolId, subjects]);
+
+  // Reset available subjects when form is reset
+  useEffect(() => {
+    if (!form.isSubmitting) {
+      setAvailableSubjects(subjects);
+    }
+  }, [form.isSubmitting, subjects]);
 
   const openAddModal = () => {
     setEditingOffering(null);
     form.reset();
-    setAvailableCourses(courses);
+    setAvailableSubjects(subjects);
     setModalOpen(true);
   };
 
   const openEditModal = (offering: ClassOffering) => {
     setEditingOffering(offering);
     form.setValues({
-      course_id: offering.course_id,
+      subject_id: offering.subject_id,
       class_id: (offering.class_id || offering.classes?.id) ?? "",
       term_id: offering.term_id,
       periods_per_week: offering.periods_per_week,
       required_hours_per_term: offering.required_hours_per_term,
-      assignment_type: offering.assignment_type as "ai" | "manual" | "ai_suggested" || "ai",
     });
     setModalOpen(true);
   };
@@ -214,11 +222,12 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
       .from("class_offerings")
       .select(`
         *,
-        courses (
+        subjects (
           id,
           name,
           code,
           grade_level,
+          department_id,
           departments (
             id,
             name
@@ -281,7 +290,7 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
           .select(`
             *,
             classes (*),
-            courses (*),
+            subjects (*),
             terms (*)
           `);
         
@@ -300,7 +309,7 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
       } else {
         // Insert
         const insertData = {
-          course_id: values.course_id,
+          subject_id: values.subject_id,
           class_id: values.class_id,
           term_id: values.term_id,
           periods_per_week: values.periods_per_week,
@@ -313,7 +322,7 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
           .select(`
             *,
             classes (*),
-            courses (*),
+            subjects (*),
             terms (*)
           `);
         
@@ -321,18 +330,13 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
         
         // Add new offering to local state immediately
         if (data && data[0]) {
-          // Find the full course object from the courses prop
-          const fullCourse = courses.find(c => c.id === data[0].course_id) || {
-            id: data[0].course_id,
-            name: data[0].courses?.name || '',
-            code: data[0].courses?.code || null,
-            grade_level: data[0].courses?.grade_level || 0,
-            departments: null,
-            department_id: data[0].courses?.department_id || '',
-            hours_distribution_type: null,
-            school_id: '',
-            term_hours: null,
-            total_hours_per_year: null,
+          // Find the full subject object from the subjects prop
+          const fullSubject = subjects.find(s => s.id === data[0].subject_id) || {
+            id: data[0].subject_id,
+            name: data[0].subjects?.name || '',
+            code: data[0].subjects?.code || null,
+            grade_level: data[0].subjects?.grade_level || 0,
+            department_id: data[0].subjects?.department_id || '',
           };
           // Find the full term object from the terms prop
           const fullTerm = terms.find(t => t.id === data[0].term_id) || {
@@ -347,9 +351,9 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
           const newOffering: ClassOffering = {
             ...data[0],
             class_id: data[0].class_id,
-            courses: {
-              ...fullCourse,
-              departments: fullCourse.departments || null,
+            subjects: {
+              ...fullSubject,
+              departments: fullSubject.departments || null,
             },
             classes: {
               ...data[0].classes,
@@ -410,22 +414,12 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
 
   // Get statistics
   const totalOfferings = classOfferings.length;
-  const assignedOfferings = classOfferings.filter(o => o.manual_assigned_teacher_id || o.ai_assigned_teacher_id).length;
+  const assignedOfferings = classOfferings.filter(o => o.required_hours_per_term).length;
   const unassignedOfferings = totalOfferings - assignedOfferings;
   const assignmentRate = totalOfferings > 0 ? (assignedOfferings / totalOfferings) * 100 : 0;
 
   // Get unique grades and terms for filters
   const uniqueGrades = Array.from(new Set(allClasses.map(cs => cs.grade_level))).sort();
-
-  const getAssignmentStatus = (offering: ClassOffering) => {
-    if (offering.manual_assigned_teacher_id) {
-      return { status: 'manual', label: 'Manually Assigned', color: 'green' };
-    } else if (offering.ai_assigned_teacher_id) {
-      return { status: 'ai', label: 'AI Assigned', color: 'blue' };
-    } else {
-      return { status: 'unassigned', label: 'Unassigned', color: 'gray' };
-    }
-  };
 
   return (
     <Card shadow="sm" padding="lg" radius="md" withBorder>
@@ -433,7 +427,7 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
       <Group justify="space-between" mb="lg">
         <div>
           <Text size="xl" fw={600}>Class Offerings</Text>
-          <Text size="sm" c="dimmed">Manage course offerings and teacher assignments</Text>
+          <Text size="sm" c="dimmed">Manage class offerings and teacher assignments</Text>
         </div>
         <Button 
           leftSection={<IconPlus size={16} />} 
@@ -571,7 +565,7 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
           variant="light"
         >
           {classOfferings.length === 0 
-            ? "Get started by adding your first class offering. Class offerings define which courses are taught to which sections during specific terms."
+            ? "Get started by adding your first class offering. Class offerings define which subjects are taught to which sections during specific terms."
             : "No class offerings match the selected filters. Try adjusting your filter criteria."
           }
         </Alert>
@@ -579,18 +573,16 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
         <Table striped highlightOnHover withTableBorder>
           <Table.Thead>
             <Table.Tr>
-              <Table.Th>Course</Table.Th>
+              <Table.Th>Subject</Table.Th>
               <Table.Th>Class Section</Table.Th>
               <Table.Th>Term</Table.Th>
               <Table.Th>Teaching Hours</Table.Th>
-              <Table.Th>Assignment Status</Table.Th>
               <Table.Th style={{ width: '120px' }}>Actions</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
             {filteredOfferings.map((offering) => {
-              const assignmentStatus = getAssignmentStatus(offering);
-              const course = offering.courses;
+              const course = offering.subjects;
               const term = offering.terms;
               
               return (
@@ -623,11 +615,6 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
                         {offering.periods_per_week} periods/week
                       </Text>
                     </div>
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge variant="light" color={assignmentStatus.color}>
-                      {assignmentStatus.label}
-                    </Badge>
                   </Table.Td>
                   <Table.Td>
                     <Group gap="xs">
@@ -679,7 +666,7 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
             <Select
               label="Class Section"
               placeholder="Select a class section"
-              description="Choose which class will take this course"
+              description="Choose which class will take this subject"
               data={allClasses.map(section => ({ 
                 value: section.id, 
                 label: `${section.name} (Grade ${section.grade_level})` 
@@ -689,14 +676,14 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
             />
 
             <Select
-              label="Course"
-              placeholder="Select a course"
-              description="Choose which course to offer"
-              data={availableCourses.map(course => ({ 
-                value: course.id, 
-                label: `${course.code || 'No Code'} - ${course.name} (${course.departments?.name})` 
+              label="Subject"
+              placeholder="Select a subject"
+              description="Choose which subject to offer"
+              data={availableSubjects.map(subject => ({ 
+                value: subject.id, 
+                label: `${subject.name} (${subject.departments?.name})` 
               }))}
-              {...form.getInputProps("course_id")}
+              {...form.getInputProps("subject_id")}
               required
               disabled={!watchedClassId}
             />
@@ -704,7 +691,7 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
             <Select
               label="Term"
               placeholder="Select a term"
-              description="Choose when this course will be taught"
+              description="Choose when this subject will be taught"
               data={terms.map(term => ({ 
                 value: term.id, 
                 label: `${term.name} (${term.academic_years.name})` 
@@ -716,7 +703,7 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
             <NumberInput
               label="Periods per Week"
               placeholder="Enter periods per week"
-              description="How many periods this course meets per week"
+              description="How many periods this subject meets per week"
               min={1}
               max={20}
               {...form.getInputProps("periods_per_week")}
@@ -726,22 +713,10 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
             <NumberInput
               label="Required Hours per Term"
               placeholder="Enter required hours"
-              description="Total hours required for this course in this term"
+              description="Total hours required for this subject in this term"
               min={1}
               max={1000}
               {...form.getInputProps("required_hours_per_term")}
-            />
-
-            <Select
-              label="Assignment Type"
-              placeholder="Select assignment type"
-              description="How teachers will be assigned to this class"
-              data={[
-                { value: "ai", label: "AI Assignment" },
-                { value: "manual", label: "Manual Assignment" },
-                { value: "ai_suggested", label: "AI Suggested" },
-              ]}
-              {...form.getInputProps("assignment_type")}
             />
           </Stack>
 
@@ -768,7 +743,7 @@ export const ClassOfferingsClientUI: React.FC<ClassOfferingsClientUIProps> = ({
         <Stack gap="md">
           <Alert color="red" title="Warning" variant="light" icon={<IconX size={16} />}>
             <Text size="sm">
-              Are you sure you want to delete the class offering "{confirmDelete?.courses?.name} - {confirmDelete?.classes?.name}"?
+              Are you sure you want to delete the class offering "{confirmDelete?.subjects?.name} - {confirmDelete?.classes?.name}"?
             </Text>
           </Alert>
           

@@ -1,6 +1,6 @@
 /**
  * Type helper utilities for database types
- * Generated on: Thu Jun 26 13:39:41 IST 2025
+ * Generated on: Thu Jun 26 23:28:00 IST 2025
  */
 
 import { Database } from '../database.types'

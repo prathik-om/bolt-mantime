@@ -1,5 +1,5 @@
 import { createClient } from '@/utils/supabase/client';
-import { Timetable, TeachingAssignment, Break, TimeSlot, TimetableGeneration, ScheduledLesson } from '../types/database-helpers';
+import { Timetable, TeachingAssignment, Break, TimeSlot, TimetableGeneration, TimetableEntry } from '../types/database-helpers';
 import { handleError } from '../utils/error-handling';
 
 export interface TimetableLesson {
@@ -12,8 +12,8 @@ export interface TimetableLesson {
   slot_name: string | null;
   teacher_name: string;
   teacher_email: string;
-  course_name: string;
-  course_code: string | null;
+  subject_name: string;
+  subject_code: string | null;
   class_name: string;
   grade_level: number;
   department_name: string;
@@ -68,7 +68,7 @@ interface TimetableValidation {
 }
 
 // Client-side function for use in client components
-export async function getScheduledLessonsClient(
+export async function getTimetableEntries(
   schoolId: string,
   filters: TimetableFilters = {}
 ): Promise<TimetableLesson[]> {
@@ -95,9 +95,9 @@ export async function getScheduledLessonsClient(
   // Get time slot IDs for filtering
   const timeSlotIds = timeSlots.map(ts => ts.id);
 
-  // Build the query for scheduled lessons
+  // Build the query for timetable entries
   let query = supabase
-    .from('scheduled_lessons')
+    .from('timetable_entries')
     .select(`
       id,
       date,
@@ -111,7 +111,7 @@ export async function getScheduledLessonsClient(
           email
         ),
         class_offerings(
-          courses(
+          subjects(
             name,
             code,
             departments(name)
@@ -162,41 +162,41 @@ export async function getScheduledLessonsClient(
     .order('date', { ascending: true });
 
   if (error) {
-    console.error('Error fetching scheduled lessons:', error);
-    throw new Error(`Failed to fetch scheduled lessons: ${error.message}`);
+    console.error('Error fetching timetable entries:', error);
+    throw new Error(`Failed to fetch timetable entries: ${error.message}`);
   }
 
   if (!data) return [];
 
   // Transform the data to match our interface, filtering out incomplete records
   return data
-    .filter(lesson => {
-      const timeSlot = timeSlotMap.get(lesson.timeslot_id);
+    .filter(entry => {
+      const timeSlot = timeSlotMap.get(entry.timeslot_id);
       return timeSlot && 
-        lesson.teaching_assignments?.teachers && 
-        lesson.teaching_assignments?.class_offerings?.courses && 
-        lesson.teaching_assignments?.class_offerings?.classes;
+        entry.teaching_assignments?.teachers && 
+        entry.teaching_assignments?.class_offerings?.subjects && 
+        entry.teaching_assignments?.class_offerings?.classes;
     })
-    .map((lesson) => {
-      const timeSlot = timeSlotMap.get(lesson.timeslot_id)!;
+    .map((entry) => {
+      const timeSlot = timeSlotMap.get(entry.timeslot_id)!;
       return {
-        id: lesson.id,
-        date: lesson.date,
-        timetable_generation_id: lesson.timetable_generation_id,
-        teaching_assignment_id: lesson.teaching_assignment_id,
-        timeslot_id: lesson.timeslot_id,
+        id: entry.id,
+        date: entry.date,
+        timetable_generation_id: entry.timetable_generation_id,
+        teaching_assignment_id: entry.teaching_assignment_id,
+        timeslot_id: entry.timeslot_id,
         day_of_week: timeSlot.day_of_week,
         start_time: timeSlot.start_time,
         end_time: timeSlot.end_time,
         period_number: timeSlot.period_number,
         slot_name: timeSlot.slot_name,
-        teacher_name: `${lesson.teaching_assignments.teachers.first_name} ${lesson.teaching_assignments.teachers.last_name}`,
-        teacher_email: lesson.teaching_assignments.teachers.email,
-        course_name: lesson.teaching_assignments.class_offerings.courses.name,
-        course_code: lesson.teaching_assignments.class_offerings.courses.code,
-        class_name: lesson.teaching_assignments.class_offerings.classes.name,
-        grade_level: lesson.teaching_assignments.class_offerings.classes.grade_level,
-        department_name: lesson.teaching_assignments.class_offerings.courses.departments.name,
+        teacher_name: `${entry.teaching_assignments.teachers.first_name} ${entry.teaching_assignments.teachers.last_name}`,
+        teacher_email: entry.teaching_assignments.teachers.email,
+        subject_name: entry.teaching_assignments.class_offerings.subjects.name,
+        subject_code: entry.teaching_assignments.class_offerings.subjects.code,
+        class_name: entry.teaching_assignments.class_offerings.classes.name,
+        grade_level: entry.teaching_assignments.class_offerings.classes.grade_level,
+        department_name: entry.teaching_assignments.class_offerings.subjects.departments.name,
       };
     });
 }
@@ -841,8 +841,8 @@ export async function createTimetableGeneration(
 
 // Schedule a lesson with database-level conflict prevention
 export async function scheduleLesson(
-  lesson: Omit<ScheduledLesson, 'id'>
-): Promise<{ data: ScheduledLesson | null; error: string | null }> {
+  lesson: Omit<TimetableEntry, 'id'>
+): Promise<{ data: TimetableEntry | null; error: string | null }> {
   const supabase = createClient();
 
   try {
@@ -850,7 +850,7 @@ export async function scheduleLesson(
     // 1. Teacher double-booking (prevent_teacher_double_booking)
     // 2. Class double-booking (prevent_class_double_booking)
     const { data, error } = await supabase
-      .from('scheduled_lessons')
+      .from('timetable_entries')
       .insert(lesson)
       .select()
       .single();
@@ -963,7 +963,7 @@ export async function getTimetableGenerationWithLessons(
 
     // Get the lessons
     const { data: lessons, error: lessonsError } = await supabase
-      .from('scheduled_lessons')
+      .from('timetable_entries')
       .select(`
         id,
         date,
@@ -985,4 +985,4 @@ export async function getTimetableGenerationWithLessons(
   } catch (error) {
     return handleError('Failed to fetch timetable generation with lessons', error);
   }
-} 
+}

@@ -179,9 +179,9 @@ export async function validateClassSchedule(
   const supabase = await createClient();
   const errors: string[] = [];
 
-  // Get all lessons for this class on this date
-  const { data: lessons, error: lessonsError } = await supabase
-    .from('scheduled_lessons')
+  // Get all entries for this class on this date
+  const { data: entries, error: entriesError } = await supabase
+    .from('timetable_entries')
     .select(`
       id,
       time_slots (
@@ -191,7 +191,7 @@ export async function validateClassSchedule(
       ),
       teaching_assignments (
         class_offerings (
-          courses (
+          subjects (
             name
           )
         )
@@ -200,21 +200,21 @@ export async function validateClassSchedule(
     .eq('teaching_assignments.class_offering_id', classOfferingId)
     .eq('date', date);
 
-  if (lessonsError) {
-    errors.push(`Failed to get class schedule: ${lessonsError.message}`);
+  if (entriesError) {
+    errors.push(`Failed to get class schedule: ${entriesError.message}`);
     return { isValid: false, errors };
   }
 
-  if (!lessons) return { isValid: true, errors: [] };
+  if (!entries) return { isValid: true, errors: [] };
 
   // Check for gaps in schedule
-  const sortedLessons = lessons.sort((a, b) => 
+  const sortedEntries = entries.sort((a, b) => 
     a.time_slots.start_time.localeCompare(b.time_slots.start_time)
   );
 
-  for (let i = 1; i < sortedLessons.length; i++) {
-    const prevEnd = new Date(`1970-01-01T${sortedLessons[i-1].time_slots.end_time}`);
-    const currStart = new Date(`1970-01-01T${sortedLessons[i].time_slots.start_time}`);
+  for (let i = 1; i < sortedEntries.length; i++) {
+    const prevEnd = new Date(`1970-01-01T${sortedEntries[i-1].time_slots.end_time}`);
+    const currStart = new Date(`1970-01-01T${sortedEntries[i].time_slots.start_time}`);
     
     const gapMinutes = (currStart.getTime() - prevEnd.getTime()) / 1000 / 60;
     
@@ -224,8 +224,8 @@ export async function validateClassSchedule(
   }
 
   // Check subject distribution
-  const subjectCounts = lessons.reduce((acc, lesson) => {
-    const subject = lesson.teaching_assignments.class_offerings.courses.name;
+  const subjectCounts = entries.reduce((acc, entry) => {
+    const subject = entry.teaching_assignments.class_offerings.subjects.name;
     acc[subject] = (acc[subject] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
@@ -240,4 +240,4 @@ export async function validateClassSchedule(
     isValid: errors.length === 0,
     errors
   };
-} 
+}

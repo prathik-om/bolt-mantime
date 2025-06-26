@@ -34,7 +34,7 @@ export async function getTeacherSchedule({
     .from('teaching_assignments')
     .select(`
       id,
-      scheduled_lessons!inner (
+      timetable_entries!inner (
         id,
         date,
         time_slots (
@@ -51,7 +51,7 @@ export async function getTeacherSchedule({
           name,
           grade_level
         ),
-        courses (
+        subjects (
           id,
           name,
           code
@@ -59,10 +59,10 @@ export async function getTeacherSchedule({
       )
     `)
     .eq('teacher_id', teacherId)
-    .gte('scheduled_lessons.date', startDate)
-    .lte('scheduled_lessons.date', endDate)
-    .order('scheduled_lessons.date', { ascending: true })
-    .order('scheduled_lessons.time_slots.start_time', { ascending: true });
+    .gte('timetable_entries.date', startDate)
+    .lte('timetable_entries.date', endDate)
+    .order('timetable_entries.date', { ascending: true })
+    .order('timetable_entries.time_slots.start_time', { ascending: true });
 
   if (error) throw error;
   return data;
@@ -94,7 +94,7 @@ export async function getClassSchedule({
         first_name,
         last_name
       ),
-      course:courses (
+      subject:subjects (
         id,
         name,
         code
@@ -127,7 +127,7 @@ export async function getRoomSchedule({
   const supabase = await createClient();
 
   const { data, error } = await supabase
-    .from('scheduled_lessons')
+    .from('timetable_entries')
     .select(`
       id,
       date,
@@ -151,7 +151,7 @@ export async function getRoomSchedule({
             name,
             grade_level
           ),
-          courses (
+          subjects (
             id,
             name,
             code

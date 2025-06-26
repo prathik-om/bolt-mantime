@@ -92,13 +92,13 @@ export async function generateTimetable(options: GenerationOptions): Promise<Gen
       const periodsNeeded = assignment.class_offerings.periods_per_week;
       let periodsScheduled = 0;
 
-      // Get existing scheduled lessons for this assignment
-      const { data: existingLessons } = await supabase
-        .from('scheduled_lessons')
+      // Get existing scheduled entries for this assignment
+      const { data: existingEntries } = await supabase
+        .from('timetable_entries')
         .select('*')
         .eq('teaching_assignment_id', assignment.id);
 
-      periodsScheduled = existingLessons?.length || 0;
+      periodsScheduled = existingEntries?.length || 0;
 
       // Try to schedule remaining periods
       while (periodsScheduled < periodsNeeded) {
@@ -115,7 +115,7 @@ export async function generateTimetable(options: GenerationOptions): Promise<Gen
         }
 
         // Validate the potential schedule
-        const validation = await validateScheduledLesson(
+        const validation = await validateScheduledEntry(
           options.schoolId,
           assignment.teacher_id,
           availableSlot.id,
@@ -127,9 +127,9 @@ export async function generateTimetable(options: GenerationOptions): Promise<Gen
           continue;
         }
 
-        // Schedule the lesson
+        // Schedule the entry
         const { error: scheduleError } = await supabase
-          .from('scheduled_lessons')
+          .from('timetable_entries')
           .insert({
             teaching_assignment_id: assignment.id,
             timeslot_id: availableSlot.id,
@@ -137,7 +137,7 @@ export async function generateTimetable(options: GenerationOptions): Promise<Gen
           });
 
         if (scheduleError) {
-          errors.push(`Failed to schedule lesson: ${scheduleError.message}`);
+          errors.push(`Failed to schedule entry: ${scheduleError.message}`);
           continue;
         }
 
@@ -148,7 +148,7 @@ export async function generateTimetable(options: GenerationOptions): Promise<Gen
 
     // Validate the complete timetable
     const { data: finalTimetable } = await supabase
-      .from('scheduled_lessons')
+      .from('timetable_entries')
       .select(`
         id,
         teaching_assignments (
@@ -206,13 +206,13 @@ async function findBestTimeSlot(
 
   for (const slot of availableSlots) {
     // Check if slot is already taken
-    const { data: existingLessons } = await supabase
-      .from('scheduled_lessons')
+    const { data: existingEntries } = await supabase
+      .from('timetable_entries')
       .select('id')
       .eq('timeslot_id', slot.id)
       .eq('teaching_assignments.teacher_id', assignment.teacher_id);
 
-    if (existingLessons && existingLessons.length > 0) {
+    if (existingEntries && existingEntries.length > 0) {
       continue;
     }
 
@@ -228,7 +228,7 @@ async function findBestTimeSlot(
     }
 
     // Validate against school constraints
-    const validation = await validateScheduledLesson(
+    const validation = await validateScheduledEntry(
       schoolId,
       assignment.teacher_id,
       slot.id,

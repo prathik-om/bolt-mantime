@@ -342,9 +342,56 @@ export async function getTeacherWithQualifications(id: string): Promise<any> {
 }
 
 export async function getTeacherSchedule(teacherId: string, termId?: string): Promise<any[]> {
-  // This function would need to be updated based on your new schema
-  // Since timetable_entries table doesn't exist in the new schema
-  return [];
+  const supabase = createClient();
+  
+  try {
+    let query = supabase
+      .from('timetable_entries')
+      .select(`
+        id,
+        date,
+        time_slots (
+          id,
+          day_of_week,
+          start_time,
+          end_time,
+          period_number
+        ),
+        teaching_assignments!inner (
+          id,
+          teacher_id,
+          class_offerings (
+            id,
+            subjects (
+              id,
+              name,
+              code
+            ),
+            classes (
+              id,
+              name,
+              grade_id,
+              section
+            )
+          )
+        )
+      `)
+      .eq('teaching_assignments.teacher_id', teacherId);
+
+    if (termId) {
+      query = query.eq('teaching_assignments.class_offerings.term_id', termId);
+    }
+
+    const { data, error } = await query
+      .order('date', { ascending: true })
+      .order('time_slots.start_time', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching teacher schedule:', error);
+    return [];
+  }
 }
 
 export async function addTeacherQualification(data: {
