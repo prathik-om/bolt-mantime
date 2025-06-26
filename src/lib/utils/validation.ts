@@ -1,11 +1,26 @@
 import { createClient } from '@/utils/supabase/client';
 import type { Database } from '@/lib/database.types';
+import type { 
+  TimeSlot, 
+  TeachingAssignment, 
+  SchoolConstraints,
+  Teacher,
+  ClassOffering,
+  Room
+} from '../types/database-helpers';
+
+import { 
+  isTimeSlot, 
+  isTeachingAssignment, 
+  isSchoolConstraints,
+  isValidTimeRange,
+  isValidDayOfWeek,
+  isValidWorkingDays,
+  isValidPeriodCount
+} from './type-guards';
 
 type AcademicYear = Database['public']['Tables']['academic_years']['Row'];
 type Term = Database['public']['Tables']['terms']['Row'];
-type TimeSlot = Database['public']['Tables']['time_slots']['Row'];
-type ClassOffering = Database['public']['Tables']['class_offerings']['Row'];
-type TeachingAssignment = Database['public']['Tables']['teaching_assignments']['Row'];
 type Holiday = Database['public']['Tables']['holidays']['Row'];
 
 export interface ValidationResult {
@@ -123,51 +138,25 @@ export async function validateTerm(
 }
 
 /**
- * Validate time slot data
+ * Time slot validation
  */
-export function validateTimeSlot(data: Partial<TimeSlot>): ValidationResult {
-  // Validate day of week
-  if (data.day_of_week !== undefined && (data.day_of_week < 0 || data.day_of_week > 6)) {
-    return { isValid: false, message: 'Day of week must be between 0 (Sunday) and 6 (Saturday)' };
+export function validateTimeSlot(timeSlot: TimeSlot): string[] {
+  const errors: string[] = [];
+
+  if (!isTimeSlot(timeSlot)) {
+    errors.push('Invalid time slot format');
+    return errors;
   }
-  
-  // Validate time format and logic
-  if (data.start_time && data.end_time) {
-    const startTime = data.start_time;
-    const endTime = data.end_time;
-    
-    // Validate time format (HH:MM:SS)
-    const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/;
-    if (!timeRegex.test(startTime) || !timeRegex.test(endTime)) {
-      return { isValid: false, message: 'Time format must be HH:MM:SS' };
-    }
-    
-    // Validate that end time is after start time
-    const start = new Date(`2000-01-01T${startTime}`);
-    const end = new Date(`2000-01-01T${endTime}`);
-    
-    if (end <= start) {
-      return { isValid: false, message: 'End time must be after start time' };
-    }
-    
-    // Validate period duration (minimum 15 minutes, maximum 4 hours)
-    const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
-    if (durationMinutes < 15) {
-      return { isValid: false, message: 'Period duration must be at least 15 minutes' };
-    }
-    if (durationMinutes > 240) {
-      return { isValid: false, message: 'Period duration cannot exceed 4 hours' };
-    }
+
+  if (!isValidDayOfWeek(timeSlot.day_of_week)) {
+    errors.push('Invalid day of week');
   }
-  
-  // Validate period number
-  if (data.period_number !== undefined && data.period_number !== null) {
-    if (data.period_number < 1) {
-      return { isValid: false, message: 'Period number must be at least 1' };
-    }
+
+  if (!isValidTimeRange(timeSlot.start_time, timeSlot.end_time)) {
+    errors.push('End time must be after start time');
   }
-  
-  return { isValid: true, message: 'Time slot data is valid' };
+
+  return errors;
 }
 
 /**
@@ -251,62 +240,42 @@ export async function validateClassOffering(
 }
 
 /**
- * Validate teaching assignment data
+ * Teaching assignment validation
  */
-export async function validateTeachingAssignment(
-  data: Partial<TeachingAssignment>,
-  excludeId?: string
-): Promise<ValidationResult> {
-  const supabase = createClient();
-  
-  if (!data.class_offering_id || !data.teacher_id) {
-    return { isValid: false, message: 'Class offering ID and teacher ID are required' };
+export function validateTeachingAssignment(
+  assignment: TeachingAssignment,
+  existingAssignments: TeachingAssignment[] = []
+): string[] {
+  const errors: string[] = [];
+
+  if (!isTeachingAssignment(assignment)) {
+    errors.push('Invalid teaching assignment format');
+    return errors;
   }
-  
-  // Check if class offering exists and get school_id
-  const { data: classOffering } = await supabase
-    .from('class_offerings')
-    .select('id, courses(school_id)')
-    .eq('id', data.class_offering_id)
-    .single();
-  
-  if (!classOffering) {
-    return { isValid: false, message: 'Class offering not found' };
+
+  // Check for teacher workload
+  const teacherAssignments = existingAssignments.filter(
+    a => a.teacher_id === assignment.teacher_id
+  );
+  const totalPeriods = teacherAssignments.reduce((sum, a) => 
+    sum + (a.class_offerings?.periods_per_week || 0), 0
+  );
+
+  const maxPeriodsPerWeek = assignment.teacher?.max_periods_per_week;
+  if (maxPeriodsPerWeek && totalPeriods > maxPeriodsPerWeek) {
+    errors.push(`Exceeds teacher's maximum periods per week (${maxPeriodsPerWeek})`);
   }
-  
-  // Check if teacher exists and belongs to the same school
-  const { data: teacher } = await supabase
-    .from('teachers')
-    .select('id, school_id')
-    .eq('id', data.teacher_id)
-    .single();
-  
-  if (!teacher) {
-    return { isValid: false, message: 'Teacher not found' };
+
+  // Check for class offering validity
+  if (!assignment.class_offerings) {
+    errors.push('Missing class offering details');
+  } else {
+    if (!isValidPeriodCount(assignment.class_offerings.periods_per_week)) {
+      errors.push('Invalid number of periods per week');
+    }
   }
-  
-  if (teacher.school_id !== classOffering.courses?.school_id) {
-    return { isValid: false, message: 'Teacher and class offering must belong to the same school' };
-  }
-  
-  // Check if teacher is already assigned to this class offering
-  let query = supabase
-    .from('teaching_assignments')
-    .select('id')
-    .eq('class_offering_id', data.class_offering_id)
-    .eq('teacher_id', data.teacher_id);
-  
-  if (excludeId) {
-    query = query.neq('id', excludeId);
-  }
-  
-  const { data: existingAssignment } = await query;
-  
-  if (existingAssignment && existingAssignment.length > 0) {
-    return { isValid: false, message: 'Teacher is already assigned to this class offering' };
-  }
-  
-  return { isValid: true, message: 'Teaching assignment is valid' };
+
+  return errors;
 }
 
 /**
@@ -643,4 +612,203 @@ export async function validateORToolsDataIntegrity(schoolId: string): Promise<Va
   }
   
   return results;
+}
+
+/**
+ * School constraints validation
+ */
+export function validateSchoolConstraints(constraints: SchoolConstraints): string[] {
+  const errors: string[] = [];
+
+  if (!isSchoolConstraints(constraints)) {
+    errors.push('Invalid school constraints format');
+    return errors;
+  }
+
+  if (constraints.minLessonsPerDay > constraints.maxLessonsPerDay) {
+    errors.push('Minimum lessons per day cannot exceed maximum lessons per day');
+  }
+
+  if (constraints.maxLessonsPerDay > 12) { // Assuming reasonable max
+    errors.push('Maximum lessons per day cannot exceed 12');
+  }
+
+  if (constraints.minLessonsPerDay < 1) {
+    errors.push('Minimum lessons per day must be at least 1');
+  }
+
+  if (constraints.maxConsecutiveLessons < 1) {
+    errors.push('Maximum consecutive lessons must be at least 1');
+  }
+
+  if (constraints.maxConsecutiveLessons > constraints.maxLessonsPerDay) {
+    errors.push('Maximum consecutive lessons cannot exceed maximum lessons per day');
+  }
+
+  return errors;
+}
+
+/**
+ * Schedule validation
+ */
+export function validateSchedule(
+  assignments: TeachingAssignment[],
+  timeSlots: TimeSlot[],
+  constraints: SchoolConstraints
+): string[] {
+  const errors: string[] = [];
+
+  // Validate individual components first
+  assignments.forEach(assignment => {
+    const assignmentErrors = validateTeachingAssignment(assignment);
+    errors.push(...assignmentErrors.map(e => `Assignment ${assignment.id}: ${e}`));
+  });
+
+  timeSlots.forEach(slot => {
+    const slotErrors = validateTimeSlot(slot);
+    errors.push(...slotErrors.map(e => `Time slot ${slot.id}: ${e}`));
+  });
+
+  const constraintErrors = validateSchoolConstraints(constraints);
+  errors.push(...constraintErrors);
+
+  if (errors.length > 0) return errors;
+
+  // Validate schedule as a whole
+  const teacherSchedules = groupByTeacher(assignments);
+  
+  // Check for teacher conflicts
+  Object.entries(teacherSchedules).forEach(([teacherId, teacherAssignments]) => {
+    const teacherTimeSlots = teacherAssignments.flatMap(a => 
+      a.scheduled_lessons?.map(l => l.time_slots) || []
+    );
+
+    // Check for overlapping slots
+    for (let i = 0; i < teacherTimeSlots.length; i++) {
+      for (let j = i + 1; j < teacherTimeSlots.length; j++) {
+        if (hasTimeSlotOverlap(teacherTimeSlots[i], teacherTimeSlots[j])) {
+          errors.push(`Teacher ${teacherId} has overlapping lessons`);
+        }
+      }
+    }
+
+    // Check consecutive lessons
+    const consecutiveCheck = checkConsecutiveLessons(teacherTimeSlots, constraints);
+    if (!consecutiveCheck.isValid) {
+      errors.push(
+        `Teacher ${teacherId} has ${consecutiveCheck.consecutiveCount} consecutive lessons ` +
+        `(max allowed: ${constraints.maxConsecutiveLessons})`
+      );
+    }
+
+    // Check daily lessons
+    const dailyCheck = checkDailyLessons(teacherTimeSlots, constraints);
+    if (!dailyCheck.isValid) {
+      Object.entries(dailyCheck.lessonsByDay).forEach(([day, count]) => {
+        if (count < constraints.minLessonsPerDay) {
+          errors.push(
+            `Teacher ${teacherId} has only ${count} lessons on ${getDayName(Number(day))} ` +
+            `(min required: ${constraints.minLessonsPerDay})`
+          );
+        }
+        if (count > constraints.maxLessonsPerDay) {
+          errors.push(
+            `Teacher ${teacherId} has ${count} lessons on ${getDayName(Number(day))} ` +
+            `(max allowed: ${constraints.maxLessonsPerDay})`
+          );
+        }
+      });
+    }
+  });
+
+  return errors;
+}
+
+/**
+ * Helper functions
+ */
+function groupByTeacher(assignments: TeachingAssignment[]): Record<string, TeachingAssignment[]> {
+  return assignments.reduce((acc, assignment) => {
+    const teacherId = assignment.teacher_id;
+    if (!acc[teacherId]) {
+      acc[teacherId] = [];
+    }
+    acc[teacherId].push(assignment);
+    return acc;
+  }, {} as Record<string, TeachingAssignment[]>);
+}
+
+function hasTimeSlotOverlap(slot1: TimeSlot, slot2: TimeSlot): boolean {
+  if (slot1.day_of_week !== slot2.day_of_week) return false;
+
+  const slot1Start = new Date(`1970-01-01T${slot1.start_time}`);
+  const slot1End = new Date(`1970-01-01T${slot1.end_time}`);
+  const slot2Start = new Date(`1970-01-01T${slot2.start_time}`);
+  const slot2End = new Date(`1970-01-01T${slot2.end_time}`);
+
+  return (
+    (slot1Start >= slot2Start && slot1Start < slot2End) ||
+    (slot2Start >= slot1Start && slot2Start < slot1End)
+  );
+}
+
+function checkConsecutiveLessons(
+  timeSlots: TimeSlot[],
+  constraints: SchoolConstraints
+): { isValid: boolean; consecutiveCount: number } {
+  let maxConsecutive = 1;
+  let currentConsecutive = 1;
+
+  const sortedSlots = [...timeSlots].sort((a, b) => {
+    if (a.day_of_week !== b.day_of_week) {
+      return a.day_of_week - b.day_of_week;
+    }
+    return a.start_time.localeCompare(b.start_time);
+  });
+
+  for (let i = 1; i < sortedSlots.length; i++) {
+    const prevSlot = sortedSlots[i - 1];
+    const currSlot = sortedSlots[i];
+
+    if (prevSlot.day_of_week === currSlot.day_of_week) {
+      const prevEnd = new Date(`1970-01-01T${prevSlot.end_time}`);
+      const currStart = new Date(`1970-01-01T${currSlot.start_time}`);
+      
+      if ((currStart.getTime() - prevEnd.getTime()) / 1000 / 60 < 5) {
+        currentConsecutive++;
+        maxConsecutive = Math.max(maxConsecutive, currentConsecutive);
+      } else {
+        currentConsecutive = 1;
+      }
+    } else {
+      currentConsecutive = 1;
+    }
+  }
+
+  return {
+    isValid: maxConsecutive <= constraints.maxConsecutiveLessons,
+    consecutiveCount: maxConsecutive
+  };
+}
+
+function checkDailyLessons(
+  timeSlots: TimeSlot[],
+  constraints: SchoolConstraints
+): { isValid: boolean; lessonsByDay: Record<number, number> } {
+  const lessonsByDay: Record<number, number> = {};
+
+  timeSlots.forEach(slot => {
+    lessonsByDay[slot.day_of_week] = (lessonsByDay[slot.day_of_week] || 0) + 1;
+  });
+
+  const isValid = Object.values(lessonsByDay).every(count =>
+    count >= constraints.minLessonsPerDay && count <= constraints.maxLessonsPerDay
+  );
+
+  return { isValid, lessonsByDay };
+}
+
+function getDayName(dayOfWeek: number): string {
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  return days[dayOfWeek];
 } 

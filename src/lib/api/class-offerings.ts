@@ -1,43 +1,30 @@
 import { createClient } from '@/utils/supabase/client';
 import type { Database } from '@/lib/database.types';
+import { ClassOffering, Course, Class, Term, TeachingAssignment, Teacher } from '../types/database-helpers';
+import { handleError } from '../utils/error-handling';
 
-type ClassOffering = Database['public']['Tables']['class_offerings']['Row'];
 type ClassOfferingInsert = Database['public']['Tables']['class_offerings']['Insert'];
 type ClassOfferingUpdate = Database['public']['Tables']['class_offerings']['Update'];
 
-type Course = Database['public']['Tables']['courses']['Row'];
-type Term = Database['public']['Tables']['terms']['Row'];
-type Class = Database['public']['Tables']['classes']['Row'];
-
 export interface ClassOfferingWithDetails extends ClassOffering {
-  courses: Course;
-  classes: {
-    id: string;
-    name: string;
-    grade_level: number;
-    school_id: string;
-  };
-  terms: {
-    id: string;
-    name: string;
-    start_date: string;
-    end_date: string;
-    period_duration_minutes: number | null;
+  courses: (Course & {
+    departments: {
+      id: string;
+      name: string;
+      code: string;
+    };
+  }) | null;
+  classes: Class | null;
+  terms: (Term & {
     academic_years: {
       id: string;
       name: string;
       school_id: string;
     };
-  };
-  teaching_assignments: Array<{
-    id: string;
-    teachers: {
-      id: string;
-      first_name: string;
-      last_name: string;
-      email: string;
-    };
-  }>;
+  }) | null;
+  teaching_assignments: (TeachingAssignment & {
+    teachers: Teacher;
+  })[] | null;
 }
 
 export interface ClassOfferingValidation {
@@ -242,235 +229,265 @@ export async function getClassOffering(offeringId: string): Promise<ClassOfferin
 }
 
 /**
- * Create a new class offering with auto-calculation
+ * Validate class offering data
  */
-export async function createClassOffering(offeringData: ClassOfferingInsert): Promise<ClassOffering> {
-  const supabase = createClient();
-  
-  // Validate the offering data
-  const validation = await validateClassOfferingData(offeringData);
-  if (!validation.isValid) {
-    throw new Error(validation.message);
-  }
+async function validateClassOffering(
+  offering: Partial<ClassOffering>,
+  schoolId: string
+): Promise<ClassOfferingValidation> {
+  try {
+    const supabase = createClient();
+    const errors: string[] = [];
 
-  // Auto-calculate required hours if not provided
-  const enhancedData = await enhanceClassOfferingData(offeringData);
+    if (!offering.course_id) {
+      errors.push('Course ID is required');
+    }
 
-  // Ensure all required fields are present
-  const finalData = {
-    ...offeringData,
-    ...enhancedData
-  } as ClassOfferingInsert;
+    if (!offering.class_id) {
+      errors.push('Class ID is required');
+    }
 
-  const { data, error } = await supabase
-    .from('class_offerings')
-    .insert(finalData)
-    .select()
-    .single();
+    if (!offering.term_id) {
+      errors.push('Term ID is required');
+    }
 
-  if (error) {
-    // Handle unique constraint violations
-    if (error.code === '23505') {
-      if (error.message.includes('class_offerings_term_class_course_unique')) {
-        throw new Error('This course is already offered for this class in this term');
+    if (offering.periods_per_week === undefined || offering.periods_per_week === null) {
+      errors.push('Periods per week is required');
+    } else if (offering.periods_per_week < 1) {
+      errors.push('Periods per week must be at least 1');
+    }
+
+    // Get course details
+    const { data: course } = await supabase
+      .from('courses')
+      .select(`
+        *,
+        departments (
+          id,
+          name
+        )
+      `)
+      .eq('id', offering.course_id)
+      .single();
+
+    if (!course) {
+      errors.push('Course not found');
+    } else {
+      // Get term details
+      const { data: term } = await supabase
+        .from('terms')
+        .select(`
+          *,
+          academic_years (
+            id,
+            name,
+            school_id
+          )
+        `)
+        .eq('id', offering.term_id)
+        .single();
+
+      if (!term) {
+        errors.push('Term not found');
+      } else {
+        // Calculate term duration in weeks
+        const startDate = new Date(term.start_date);
+        const endDate = new Date(term.end_date);
+        const termWeeks = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 7));
+
+        // Calculate expected hours based on periods per week and term duration
+        const periodDurationHours = (term.period_duration_minutes || 50) / 60;
+        const expectedHours = offering.periods_per_week * periodDurationHours * termWeeks;
+
+        // Validate against course requirements
+        if (course.total_hours_per_year) {
+          const expectedTermHours = course.total_hours_per_year / 4; // Assuming 4 terms per year
+          const variance = Math.abs(expectedHours - expectedTermHours);
+          const variancePercentage = (variance / expectedTermHours) * 100;
+
+          if (variancePercentage > 20) { // Allow 20% variance
+            errors.push(`Hours allocation (${Math.round(expectedHours)}h) varies significantly from expected term hours (${Math.round(expectedTermHours)}h)`);
+          }
+        }
+
+        // Get school constraints
+        const { data: school } = await supabase
+          .from('schools')
+          .select('max_periods_per_day, sessions_per_day')
+          .eq('id', schoolId)
+          .single();
+
+        if (school) {
+          // Validate against school constraints
+          if (offering.periods_per_week > (school.sessions_per_day * 5)) { // Assuming 5 school days
+            errors.push(`Periods per week (${offering.periods_per_week}) exceeds maximum possible periods based on school schedule`);
+          }
+        }
+
+        return {
+          isValid: errors.length === 0,
+          message: errors.join(', '),
+          details: {
+            periods_per_week: offering.periods_per_week,
+            required_hours_per_term: offering.required_hours_per_term,
+            expected_hours: Math.round(expectedHours),
+            variance: Math.round(Math.abs(expectedHours - (course.total_hours_per_year ? course.total_hours_per_year / 4 : 0))),
+            course_total_hours: course.total_hours_per_year,
+            term_duration_weeks: termWeeks
+          }
+        };
       }
     }
-    throw new Error(`Failed to create class offering: ${error.message}`);
-  }
 
-  return data;
+    return {
+      isValid: errors.length === 0,
+      message: errors.join(', ')
+    };
+  } catch (error) {
+    return {
+      isValid: false,
+      message: error instanceof Error ? error.message : 'Unknown error occurred'
+    };
+  }
 }
 
 /**
- * Update a class offering with auto-calculation
+ * Create a new class offering with validation
+ */
+export async function createClassOffering(
+  offering: Omit<ClassOffering, 'id' | 'created_at'>
+): Promise<{ data: ClassOffering | null; error: string | null }> {
+  try {
+    // Get school ID from course
+    const supabase = createClient();
+    const { data: course } = await supabase
+      .from('courses')
+      .select('school_id')
+      .eq('id', offering.course_id)
+      .single();
+
+    if (!course) {
+      return { data: null, error: 'Course not found' };
+    }
+
+    // Validate offering
+    const validation = await validateClassOffering(offering, course.school_id);
+    if (!validation.isValid) {
+      return { data: null, error: validation.message };
+    }
+
+    const { data, error } = await supabase
+      .from('class_offerings')
+      .insert(offering)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return { data, error: null };
+  } catch (error) {
+    return handleError('Failed to create class offering', error);
+  }
+}
+
+/**
+ * Update a class offering
  */
 export async function updateClassOffering(
-  offeringId: string, 
-  updates: ClassOfferingUpdate
-): Promise<ClassOffering> {
-  const supabase = createClient();
-  
-  // Validate the offering data
-  const validation = await validateClassOfferingData(updates, offeringId);
-  if (!validation.isValid) {
-    throw new Error(validation.message);
-  }
+  id: string,
+  updates: Partial<ClassOffering>
+): Promise<{ data: ClassOffering | null; error: string | null }> {
+  try {
+    const supabase = createClient();
 
-  // Auto-calculate required hours if periods_per_week changed
-  const enhancedUpdates = await enhanceClassOfferingData(updates);
+    // Get current offering
+    const { data: currentOffering } = await supabase
+      .from('class_offerings')
+      .select('*')
+      .eq('id', id)
+      .single();
 
-  const { data, error } = await supabase
-    .from('class_offerings')
-    .update(enhancedUpdates)
-    .eq('id', offeringId)
-    .select()
-    .single();
-
-  if (error) {
-    // Handle unique constraint violations
-    if (error.code === '23505') {
-      if (error.message.includes('class_offerings_term_class_course_unique')) {
-        throw new Error('This course is already offered for this class in this term');
-      }
+    if (!currentOffering) {
+      return { data: null, error: 'Class offering not found' };
     }
-    throw new Error(`Failed to update class offering: ${error.message}`);
-  }
 
-  return data;
+    const updatedOffering = { ...currentOffering, ...updates };
+
+    // Validate updated offering data
+    const validationErrors = await validateClassOffering(updatedOffering, currentOffering.school_id);
+    if (validationErrors.length > 0) {
+      return { data: null, error: validationErrors.join(', ') };
+    }
+
+    const { data, error } = await supabase
+      .from('class_offerings')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return { data, error: null };
+  } catch (error) {
+    return handleError('Failed to update class offering', error);
+  }
 }
 
 /**
  * Delete a class offering
  */
-export async function deleteClassOffering(offeringId: string): Promise<void> {
-  const supabase = createClient();
-  
-  // Check if this offering has teaching assignments
-  const { data: assignments } = await supabase
-    .from('teaching_assignments')
-    .select('id')
-    .eq('class_offering_id', offeringId)
-    .limit(1);
+export async function deleteClassOffering(
+  id: string
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const supabase = createClient();
 
-  if (assignments && assignments.length > 0) {
-    throw new Error('Cannot delete class offering: it has teaching assignments');
-  }
-
-  const { error } = await supabase
-    .from('class_offerings')
-    .delete()
-    .eq('id', offeringId);
-
-  if (error) {
-    throw new Error(`Failed to delete class offering: ${error.message}`);
-  }
-}
-
-/**
- * Validate class offering data
- */
-export async function validateClassOfferingData(
-  data: Partial<ClassOffering>,
-  excludeId?: string
-): Promise<ClassOfferingValidation> {
-  const supabase = createClient();
-  
-  // Basic validation
-  if (data.periods_per_week !== undefined && data.periods_per_week < 1) {
-    return { isValid: false, message: 'Periods per week must be at least 1' };
-  }
-
-  if (data.required_hours_per_term !== undefined && data.required_hours_per_term !== null) {
-    if (data.required_hours_per_term < 0) {
-      return { isValid: false, message: 'Required hours per term cannot be negative' };
-    }
-  }
-
-  // Check for duplicate class offering
-  if (data.term_id && data.class_id && data.course_id) {
-    let query = supabase
-      .from('class_offerings')
-      .select('id')
-      .eq('term_id', data.term_id)
-      .eq('class_id', data.class_id)
-      .eq('course_id', data.course_id);
-    
-    if (excludeId) {
-      query = query.neq('id', excludeId);
-    }
-    
-    const { data: existing } = await query;
-    
-    if (existing && existing.length > 0) {
-      return { isValid: false, message: 'This course is already offered for this class in this term' };
-    }
-  }
-
-  // Validate grade level consistency
-  if (data.class_id && data.course_id) {
-    const { data: classData } = await supabase
-      .from('classes')
-      .select('grade_level')
-      .eq('id', data.class_id)
-      .single();
-
-    const { data: courseData } = await supabase
-      .from('courses')
-      .select('grade_level')
-      .eq('id', data.course_id)
-      .single();
-
-    if (classData && courseData && classData.grade_level !== courseData.grade_level) {
-      return { 
-        isValid: false, 
-        message: `Grade level mismatch: class is grade ${classData.grade_level}, course is grade ${courseData.grade_level}` 
-      };
-    }
-  }
-
-  // Validate school consistency
-  if (data.class_id && data.course_id) {
-    const { data: classData } = await supabase
-      .from('classes')
-      .select('school_id')
-      .eq('id', data.class_id)
-      .single();
-
-    const { data: courseData } = await supabase
-      .from('courses')
-      .select('school_id')
-      .eq('id', data.course_id)
-      .single();
-
-    if (classData && courseData && classData.school_id !== courseData.school_id) {
-      return { 
-        isValid: false, 
-        message: 'Class and course must belong to the same school' 
-      };
-    }
-  }
-
-  return { isValid: true, message: 'Class offering data is valid' };
-}
-
-/**
- * Enhance class offering data with auto-calculations
- */
-export async function enhanceClassOfferingData(
-  data: Partial<ClassOffering>
-): Promise<Partial<ClassOffering>> {
-  const supabase = createClient();
-  
-  // If we have periods_per_week but no required_hours_per_term, calculate it
-  if (data.periods_per_week && data.periods_per_week > 0 && 
-      (data.required_hours_per_term === null || data.required_hours_per_term === undefined) &&
-      data.term_id) {
-    
-    // Get term information
-    const { data: termData } = await supabase
-      .from('terms')
-      .select('period_duration_minutes, start_date, end_date')
-      .eq('id', data.term_id)
-      .single();
-
-    if (termData && termData.period_duration_minutes) {
-      // Calculate term duration in weeks
-      const startDate = new Date(termData.start_date);
-      const endDate = new Date(termData.end_date);
-      const weeksInTerm = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 7);
-      
-      // Calculate required hours per term
-      const hoursPerWeek = (data.periods_per_week * termData.period_duration_minutes) / 60;
-      const requiredHoursPerTerm = hoursPerWeek * weeksInTerm;
-      
+    // Check for dependencies
+    const dependencies = await checkClassOfferingDependencies(id);
+    if (dependencies.hasDependencies) {
       return {
-        ...data,
-        required_hours_per_term: Math.round(requiredHoursPerTerm * 100) / 100 // Round to 2 decimal places
+        success: false,
+        error: `Cannot delete class offering: ${dependencies.message}`
       };
     }
-  }
 
-  return data;
+    const { error } = await supabase
+      .from('class_offerings')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+
+    return { success: true, error: null };
+  } catch (error) {
+    return handleError('Failed to delete class offering', error);
+  }
+}
+
+/**
+ * Helper function to check class offering dependencies
+ */
+async function checkClassOfferingDependencies(
+  offeringId: string
+): Promise<{ hasDependencies: boolean; message: string }> {
+  const supabase = createClient();
+
+  // Check for teaching assignments
+  const { count: assignmentsCount } = await supabase
+    .from('teaching_assignments')
+    .select('*', { count: 'exact', head: true })
+    .eq('class_offering_id', offeringId);
+
+  const dependencies = [];
+  if (assignmentsCount) dependencies.push(`${assignmentsCount} teaching assignments`);
+
+  return {
+    hasDependencies: dependencies.length > 0,
+    message: dependencies.length > 0
+      ? `Class offering has active ${dependencies.join(', ')}`
+      : ''
+  };
 }
 
 /**

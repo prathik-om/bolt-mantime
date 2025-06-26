@@ -1,7 +1,10 @@
 import { createClient } from '@/utils/supabase/client';
 import type { Database } from '@/lib/database.types';
+import { TimeSlot, SchoolConstraints } from '../types/database-helpers';
+import { validateTimeSlot } from '../utils/validation';
+import { convertToTimeSlot, isValidTimeRange } from '../utils/type-guards';
+import { handleError } from '../utils/error-handling';
 
-type TimeSlot = Database['public']['Tables']['time_slots']['Row'];
 type TimeSlotInsert = Database['public']['Tables']['time_slots']['Insert'];
 type TimeSlotUpdate = Database['public']['Tables']['time_slots']['Update'];
 
@@ -26,6 +29,18 @@ export interface DaySchedule {
   total_hours: number;
   teaching_periods: number;
   break_periods: number;
+}
+
+interface TimeSlotValidation {
+  isValid: boolean;
+  message: string;
+  details?: {
+    duration_minutes?: number;
+    overlaps_break?: boolean;
+    overlaps_existing_slot?: boolean;
+    is_within_school_hours?: boolean;
+    is_working_day?: boolean;
+  };
 }
 
 /**
@@ -105,110 +120,276 @@ export async function getTimeSlot(slotId: string): Promise<TimeSlot | null> {
 }
 
 /**
- * Create a new time slot
+ * Validate time slot data
  */
-export async function createTimeSlot(slotData: TimeSlotInsert): Promise<TimeSlot> {
-  const supabase = createClient();
-  
-  // Validate time format and logic
-  const validation = validateTimeSlotData(slotData);
-  if (!validation.isValid) {
-    throw new Error(validation.message);
-  }
+async function validateTimeSlot(timeSlot: Partial<TimeSlot>): Promise<TimeSlotValidation> {
+  try {
+    const errors: string[] = [];
+    const supabase = createClient();
 
-  const { data, error } = await supabase
-    .from('time_slots')
-    .insert(slotData)
-    .select()
-    .single();
+    if (!timeSlot.school_id) {
+      errors.push('School ID is required');
+    }
 
-  if (error) {
-    // Handle unique constraint violations
-    if (error.code === '23505') {
-      if (error.message.includes('time_slots_school_day_time_unique')) {
-        throw new Error('A time slot with the same start and end time already exists for this day');
-      }
-      if (error.message.includes('time_slots_school_day_period_unique')) {
-        throw new Error(`Period number ${slotData.period_number} already exists for this day`);
+    if (!timeSlot.day_of_week) {
+      errors.push('Day of week is required');
+    } else {
+      const validDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+      if (!validDays.includes(timeSlot.day_of_week.toLowerCase())) {
+        errors.push('Invalid day of week');
       }
     }
-    throw new Error(`Failed to create time slot: ${error.message}`);
-  }
 
-  return data;
+    if (!timeSlot.start_time) {
+      errors.push('Start time is required');
+    } else if (!isValidTime(timeSlot.start_time)) {
+      errors.push('Invalid start time format (should be HH:MM)');
+    }
+
+    if (!timeSlot.end_time) {
+      errors.push('End time is required');
+    } else if (!isValidTime(timeSlot.end_time)) {
+      errors.push('Invalid end time format (should be HH:MM)');
+    }
+
+    if (timeSlot.school_id && timeSlot.day_of_week) {
+      // Get school working hours and days
+      const { data: school } = await supabase
+        .from('schools')
+        .select('start_time, end_time, working_days')
+        .eq('id', timeSlot.school_id)
+        .single();
+
+      if (school) {
+        // Check if it's a working day
+        const isWorkingDay = school.working_days.includes(timeSlot.day_of_week.toLowerCase());
+        if (!isWorkingDay) {
+          errors.push('Time slot cannot be set on a non-working day');
+        }
+
+        // Check if within school hours
+        if (timeSlot.start_time && timeSlot.end_time) {
+          const schoolStart = new Date(`1970-01-01T${school.start_time}`);
+          const schoolEnd = new Date(`1970-01-01T${school.end_time}`);
+          const slotStart = new Date(`1970-01-01T${timeSlot.start_time}`);
+          const slotEnd = new Date(`1970-01-01T${timeSlot.end_time}`);
+
+          if (slotStart < schoolStart) {
+            errors.push('Time slot cannot start before school hours');
+          }
+
+          if (slotEnd > schoolEnd) {
+            errors.push('Time slot cannot end after school hours');
+          }
+
+          if (slotEnd <= slotStart) {
+            errors.push('End time must be after start time');
+          }
+
+          // Calculate duration
+          const durationMinutes = (slotEnd.getTime() - slotStart.getTime()) / (1000 * 60);
+          if (durationMinutes < 30) {
+            errors.push('Time slot must be at least 30 minutes');
+          }
+          if (durationMinutes > 120) {
+            errors.push('Time slot cannot exceed 120 minutes');
+          }
+
+          // Check for overlapping time slots
+          const { data: existingSlots } = await supabase
+            .from('time_slots')
+            .select('*')
+            .eq('school_id', timeSlot.school_id)
+            .eq('day_of_week', timeSlot.day_of_week)
+            .neq('id', timeSlot.id || '')
+            .or(`start_time.lte.${timeSlot.end_time},end_time.gte.${timeSlot.start_time}`);
+
+          const overlapsExistingSlot = existingSlots && existingSlots.length > 0;
+          if (overlapsExistingSlot) {
+            errors.push('Time slot overlaps with existing slots');
+          }
+
+          // Check for breaks during this time
+          const { data: breaks } = await supabase
+            .from('breaks')
+            .select('*')
+            .eq('school_id', timeSlot.school_id)
+            .eq('day_of_week', timeSlot.day_of_week)
+            .or(`start_time.lte.${timeSlot.end_time},end_time.gte.${timeSlot.start_time}`);
+
+          const overlapsBreak = breaks && breaks.length > 0;
+
+          return {
+            isValid: errors.length === 0,
+            message: errors.join(', '),
+            details: {
+              duration_minutes: durationMinutes,
+              overlaps_break: overlapsBreak,
+              overlaps_existing_slot: overlapsExistingSlot,
+              is_within_school_hours: slotStart >= schoolStart && slotEnd <= schoolEnd,
+              is_working_day: isWorkingDay
+            }
+          };
+        }
+      }
+    }
+
+    return {
+      isValid: errors.length === 0,
+      message: errors.join(', ')
+    };
+  } catch (error) {
+    return {
+      isValid: false,
+      message: error instanceof Error ? error.message : 'Unknown error occurred'
+    };
+  }
 }
 
 /**
- * Update a time slot
+ * Create a new time slot with validation
  */
-export async function updateTimeSlot(slotId: string, updates: TimeSlotUpdate): Promise<TimeSlot> {
-  const supabase = createClient();
-  
-  // Validate time format and logic
-  const validation = validateTimeSlotData(updates);
-  if (!validation.isValid) {
-    throw new Error(validation.message);
-  }
-
-  const { data, error } = await supabase
-    .from('time_slots')
-    .update(updates)
-    .eq('id', slotId)
-    .select()
-    .single();
-
-  if (error) {
-    // Handle unique constraint violations
-    if (error.code === '23505') {
-      if (error.message.includes('time_slots_school_day_time_unique')) {
-        throw new Error('A time slot with the same start and end time already exists for this day');
-      }
-      if (error.message.includes('time_slots_school_day_period_unique')) {
-        throw new Error(`Period number ${updates.period_number} already exists for this day`);
-      }
+export async function createTimeSlot(
+  timeSlot: Omit<TimeSlot, 'id' | 'created_at'>
+): Promise<{ data: TimeSlot | null; error: string | null }> {
+  try {
+    // Validate time slot
+    const validation = await validateTimeSlot(timeSlot);
+    if (!validation.isValid) {
+      return { data: null, error: validation.message };
     }
-    throw new Error(`Failed to update time slot: ${error.message}`);
-  }
 
-  return data;
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from('time_slots')
+      .insert(timeSlot)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return { data, error: null };
+  } catch (error) {
+    return handleError('Failed to create time slot', error);
+  }
+}
+
+/**
+ * Update a time slot with validation
+ */
+export async function updateTimeSlot(
+  id: string,
+  updates: Partial<TimeSlot>
+): Promise<{ data: TimeSlot | null; error: string | null }> {
+  try {
+    const supabase = createClient();
+
+    // Get current time slot
+    const { data: currentTimeSlot } = await supabase
+      .from('time_slots')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (!currentTimeSlot) {
+      return { data: null, error: 'Time slot not found' };
+    }
+
+    const updatedTimeSlot = { ...currentTimeSlot, ...updates };
+
+    // Validate updated time slot
+    const validation = await validateTimeSlot(updatedTimeSlot);
+    if (!validation.isValid) {
+      return { data: null, error: validation.message };
+    }
+
+    const { data, error } = await supabase
+      .from('time_slots')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return { data, error: null };
+  } catch (error) {
+    return handleError('Failed to update time slot', error);
+  }
 }
 
 /**
  * Delete a time slot
  */
-export async function deleteTimeSlot(slotId: string): Promise<void> {
+export async function deleteTimeSlot(
+  id: string
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const supabase = createClient();
+
+    // Check if time slot exists
+    const { data: timeSlot } = await supabase
+      .from('time_slots')
+      .select('id')
+      .eq('id', id)
+      .single();
+
+    if (!timeSlot) {
+      return { success: false, error: 'Time slot not found' };
+    }
+
+    // Check for dependencies
+    const dependencies = await checkTimeSlotDependencies(id);
+    if (dependencies.hasDependencies) {
+      return {
+        success: false,
+        error: `Cannot delete time slot: ${dependencies.message}`
+      };
+    }
+
+    const { error } = await supabase
+      .from('time_slots')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+
+    return { success: true, error: null };
+  } catch (error) {
+    return handleError('Failed to delete time slot', error);
+  }
+}
+
+/**
+ * Helper function to check time slot dependencies
+ */
+async function checkTimeSlotDependencies(
+  timeSlotId: string
+): Promise<{ hasDependencies: boolean; message: string }> {
   const supabase = createClient();
-  
-  // Check if this time slot is being used in any scheduled lessons
-  const { data: scheduledLessons } = await supabase
-    .from('scheduled_lessons')
-    .select('id')
-    .eq('timeslot_id', slotId)
-    .limit(1);
 
-  if (scheduledLessons && scheduledLessons.length > 0) {
-    throw new Error('Cannot delete time slot: it is being used in scheduled lessons');
-  }
+  // Check for teaching assignments using this time slot
+  const { count: assignmentCount } = await supabase
+    .from('teaching_assignments')
+    .select('*', { count: 'exact', head: true })
+    .eq('time_slot_id', timeSlotId);
 
-  // Check if this time slot is being used in teacher time constraints
-  const { data: constraints } = await supabase
-    .from('teacher_time_constraints')
-    .select('id')
-    .eq('time_slot_id', slotId)
-    .limit(1);
+  // Check for breaks using this time slot
+  const { count: breakCount } = await supabase
+    .from('breaks')
+    .select('*', { count: 'exact', head: true })
+    .eq('time_slot_id', timeSlotId);
 
-  if (constraints && constraints.length > 0) {
-    throw new Error('Cannot delete time slot: it is being used in teacher time constraints');
-  }
+  const dependencies = [];
+  if (assignmentCount) dependencies.push(`${assignmentCount} teaching assignments`);
+  if (breakCount) dependencies.push(`${breakCount} breaks`);
 
-  const { error } = await supabase
-    .from('time_slots')
-    .delete()
-    .eq('id', slotId);
-
-  if (error) {
-    throw new Error(`Failed to delete time slot: ${error.message}`);
-  }
+  return {
+    hasDependencies: dependencies.length > 0,
+    message: dependencies.length > 0
+      ? `Time slot has active ${dependencies.join(', ')}`
+      : ''
+  };
 }
 
 /**
@@ -466,4 +647,160 @@ export async function generateDefaultTimeSlots(schoolId: string): Promise<TimeSl
   });
 
   return bulkCreateTimeSlots(schoolId, slots);
+}
+
+/**
+ * Get time slots for a school
+ */
+export async function getSchoolTimeSlots(
+  schoolId: string
+): Promise<{ data: TimeSlot[] | null; error: string | null }> {
+  try {
+    const supabase = createClient();
+
+    const { data, error } = await supabase
+      .from('time_slots')
+      .select('*')
+      .eq('school_id', schoolId)
+      .order('day_of_week')
+      .order('start_time');
+
+    if (error) throw error;
+
+    const convertedTimeSlots = data
+      .map(convertToTimeSlot)
+      .filter((slot): slot is TimeSlot => slot !== null);
+
+    return { data: convertedTimeSlots, error: null };
+  } catch (error) {
+    return handleError('Failed to get school time slots', error);
+  }
+}
+
+/**
+ * Get available time slots for a teaching assignment
+ */
+export async function getAvailableTimeSlots(
+  teacherId: string,
+  classOfferingId: string,
+  schoolId: string
+): Promise<{ data: TimeSlot[] | null; error: string | null }> {
+  try {
+    const supabase = createClient();
+
+    // Get school constraints
+    const { data: constraintsData } = await supabase
+      .from('school_constraints')
+      .select('*')
+      .eq('school_id', schoolId)
+      .single();
+
+    if (!constraintsData) {
+      return {
+        data: null,
+        error: 'School constraints not found'
+      };
+    }
+
+    const constraints = constraintsData as SchoolConstraints;
+
+    // Get all time slots for the school
+    const { data: allTimeSlots } = await supabase
+      .from('time_slots')
+      .select('*')
+      .eq('school_id', schoolId)
+      .eq('is_teaching_period', true)
+      .order('day_of_week')
+      .order('start_time');
+
+    if (!allTimeSlots) {
+      return { data: null, error: 'No time slots found' };
+    }
+
+    // Get teacher's existing assignments
+    const { data: teacherAssignments } = await supabase
+      .from('teaching_assignments')
+      .select(`
+        *,
+        scheduled_lessons (
+          *,
+          time_slots (*)
+        )
+      `)
+      .eq('teacher_id', teacherId);
+
+    if (!teacherAssignments) {
+      return { data: null, error: 'Failed to get teacher assignments' };
+    }
+
+    // Get class's existing assignments
+    const { data: classAssignments } = await supabase
+      .from('teaching_assignments')
+      .select(`
+        *,
+        scheduled_lessons (
+          *,
+          time_slots (*)
+        )
+      `)
+      .eq('class_offering_id', classOfferingId);
+
+    if (!classAssignments) {
+      return { data: null, error: 'Failed to get class assignments' };
+    }
+
+    // Filter out unavailable time slots
+    const availableSlots = allTimeSlots.filter(slot => {
+      // Check teacher availability
+      const teacherUnavailable = teacherAssignments.some(assignment =>
+        assignment.scheduled_lessons?.some(lesson =>
+          isTimeSlotOverlap(slot, lesson.time_slots)
+        )
+      );
+      if (teacherUnavailable) return false;
+
+      // Check class availability
+      const classUnavailable = classAssignments.some(assignment =>
+        assignment.scheduled_lessons?.some(lesson =>
+          isTimeSlotOverlap(slot, lesson.time_slots)
+        )
+      );
+      if (classUnavailable) return false;
+
+      return true;
+    });
+
+    const convertedTimeSlots = availableSlots
+      .map(convertToTimeSlot)
+      .filter((slot): slot is TimeSlot => slot !== null);
+
+    return { data: convertedTimeSlots, error: null };
+  } catch (error) {
+    return handleError('Failed to get available time slots', error);
+  }
+}
+
+/**
+ * Helper function to check if two time slots overlap
+ */
+function isTimeSlotOverlap(slot1: TimeSlot, slot2: TimeSlot): boolean {
+  if (slot1.day_of_week !== slot2.day_of_week) return false;
+
+  const slot1Start = new Date(`1970-01-01T${slot1.start_time}`);
+  const slot1End = new Date(`1970-01-01T${slot1.end_time}`);
+  const slot2Start = new Date(`1970-01-01T${slot2.start_time}`);
+  const slot2End = new Date(`1970-01-01T${slot2.end_time}`);
+
+  return (
+    (slot1Start >= slot2Start && slot1Start < slot2End) ||
+    (slot2Start >= slot1Start && slot2Start < slot1End)
+  );
+}
+
+/**
+ * Helper function to validate time format
+ */
+function isValidTime(time: string): boolean {
+  const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+  return timeRegex.test(time);
 } 
