@@ -178,6 +178,31 @@ export const mapConstraintError = (error: any): string => {
     if (message.includes('Working days configuration invalid')) {
       return 'The working days configuration is invalid. Please check your settings.';
     }
+    // Add new school constraint error messages
+    if (message.includes('schools_max_lessons_check')) {
+      return 'Maximum lessons per day must be at least 1.';
+    }
+    if (message.includes('schools_min_lessons_check')) {
+      return 'Minimum lessons per day must be at least 0.';
+    }
+    if (message.includes('schools_max_consecutive_check')) {
+      return 'Maximum consecutive lessons must be at least 1.';
+    }
+    if (message.includes('schools_lessons_range_check')) {
+      return 'Maximum lessons per day must be greater than or equal to minimum lessons per day.';
+    }
+    if (message.includes('Maximum consecutive lessons exceeded')) {
+      return 'This schedule would exceed the maximum consecutive lessons allowed.';
+    }
+    if (message.includes('Break required between sessions')) {
+      return 'A break is required between sessions according to school policy.';
+    }
+    if (message.includes('Lessons per day limit exceeded')) {
+      return 'This schedule would exceed the maximum lessons per day allowed.';
+    }
+    if (message.includes('Minimum lessons per day not met')) {
+      return 'This schedule does not meet the minimum lessons per day requirement.';
+    }
     return message;
   }
 

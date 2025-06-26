@@ -8,7 +8,11 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
-    "db:generate-types": "supabase gen types typescript --project-id YOUR_PROJECT_ID > src/lib/database.types.ts"
+    "db:generate-types": "supabase gen types typescript --project-id YOUR_PROJECT_ID > src/lib/database.types.ts",
+    "generate-types": "sh scripts/generate-types.sh",
+    "postinstall": "npm run generate-types",
+    "prepare": "husky install",
+    "lint-staged": "lint-staged"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",
@@ -55,9 +59,16 @@
     "autoprefixer": "^10.4.21",
     "eslint": "^9.29.0",
     "eslint-config-next": "^15.3.3",
+    "husky": "^8.0.3",
+    "lint-staged": "^15.5.2",
     "postcss": "^8.5.6",
     "postcss-simple-vars": "^7.0.1",
     "tailwindcss": "^4.1.10",
     "typescript": "^5.8.3"
+  },
+  "lint-staged": {
+    "supabase/migrations/*.sql": [
+      "npm run generate-types"
+    ]
   }
 }

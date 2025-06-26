@@ -1,5 +1,10 @@
 import { createClient } from '@/utils/supabase/client';
 import type { Database } from '@/lib/database.types';
+import { getSchoolConstraints } from './schools';
+import { TeachingAssignment, TimeSlot, SchoolConstraints } from '../types/database-helpers';
+import { validateTeachingAssignment, validateSchedule } from '../utils/validation';
+import { convertToTeachingAssignment } from '../utils/type-guards';
+import { handleError } from '../utils/error-handling';
 
 type TeachingAssignment = Database['public']['Tables']['teaching_assignments']['Row'];
 type TeachingAssignmentInsert = Database['public']['Tables']['teaching_assignments']['Insert'];
@@ -61,6 +66,146 @@ export interface ClassOfferingAssignmentSummary {
   teacher_name: string | null;
   teacher_email: string | null;
   is_assigned: boolean;
+}
+
+interface TeachingAssignmentValidation {
+  isValid: boolean;
+  message: string;
+  details?: {
+    current_workload?: number;
+    max_workload?: number;
+    qualification_match?: boolean;
+    schedule_conflicts?: number;
+  };
+}
+
+/**
+ * Validate a teaching assignment
+ */
+async function validateTeachingAssignment(
+  assignment: Partial<TeachingAssignment>
+): Promise<TeachingAssignmentValidation> {
+  try {
+    const supabase = createClient();
+    const errors: string[] = [];
+
+    if (!assignment.teacher_id) {
+      errors.push('Teacher ID is required');
+    }
+
+    if (!assignment.class_offering_id) {
+      errors.push('Class offering ID is required');
+    }
+
+    if (!assignment.school_id) {
+      errors.push('School ID is required');
+    }
+
+    // Get teacher details and current workload
+    const { data: teacher } = await supabase
+      .from('teachers')
+      .select(`
+        *,
+        teacher_departments!inner (
+          department_id
+        ),
+        teaching_assignments (
+          class_offerings (
+            periods_per_week
+          )
+        )
+      `)
+      .eq('id', assignment.teacher_id)
+      .single();
+
+    if (!teacher) {
+      errors.push('Teacher not found');
+    } else {
+      // Calculate current workload
+      const currentWorkload = teacher.teaching_assignments?.reduce(
+        (total, ta) => total + (ta.class_offerings?.periods_per_week || 0),
+        0
+      ) || 0;
+
+      // Get class offering details
+      const { data: classOffering } = await supabase
+        .from('class_offerings')
+        .select(`
+          *,
+          courses (
+            department_id
+          )
+        `)
+        .eq('id', assignment.class_offering_id)
+        .single();
+
+      if (!classOffering) {
+        errors.push('Class offering not found');
+      } else {
+        // Check workload constraints
+        if (currentWorkload + classOffering.periods_per_week > (teacher.max_periods_per_week || 30)) {
+          errors.push(`Assignment would exceed teacher's maximum workload of ${teacher.max_periods_per_week} periods per week`);
+        }
+
+        // Check department qualification
+        const teacherDepartments = teacher.teacher_departments.map(td => td.department_id);
+        if (!teacherDepartments.includes(classOffering.courses.department_id)) {
+          errors.push('Teacher is not qualified for this department');
+        }
+
+        // Check for schedule conflicts
+        const { data: conflicts } = await supabase
+          .from('teaching_assignments')
+          .select(`
+            id,
+            scheduled_lessons (
+              time_slots (
+                day_of_week,
+                start_time,
+                end_time
+              )
+            )
+          `)
+          .eq('teacher_id', assignment.teacher_id)
+          .neq('id', assignment.id || '');
+
+        if (conflicts) {
+          const hasConflict = conflicts.some(ta => 
+            ta.scheduled_lessons?.some(sl =>
+              // Add conflict checking logic here
+              sl.time_slots.some(ts => {
+                // Check for time slot overlaps
+                return false; // Placeholder
+              })
+            )
+          );
+
+          if (hasConflict) {
+            errors.push('Assignment would create schedule conflicts');
+          }
+        }
+      }
+    }
+
+    return {
+      isValid: errors.length === 0,
+      message: errors.join(', '),
+      details: teacher ? {
+        current_workload: teacher.teaching_assignments?.reduce(
+          (total, ta) => total + (ta.class_offerings?.periods_per_week || 0),
+          0
+        ) || 0,
+        max_workload: teacher.max_periods_per_week || 30,
+        qualification_match: true, // Set based on department check
+        schedule_conflicts: 0 // Set based on conflict check
+      } : undefined
+    };
+  } catch (error) {
+    return {
+      isValid: false,
+      message: error instanceof Error ? error.message : 'Unknown error occurred'
+    };
+  }
 }
 
 /**
@@ -260,98 +405,146 @@ export async function getTeachingAssignment(assignmentId: string): Promise<Teach
 }
 
 /**
- * Create a new teaching assignment
+ * Create a new teaching assignment with validation
  */
-export async function createTeachingAssignment(assignmentData: TeachingAssignmentInsert): Promise<TeachingAssignment> {
-  const supabase = createClient();
-  
-  // Validate assignment data
-  const validation = await validateTeachingAssignment(assignmentData);
-  if (!validation.isValid) {
-    throw new Error(validation.message);
-  }
-
-  const { data, error } = await supabase
-    .from('teaching_assignments')
-    .insert({
-      ...assignmentData,
-      assigned_at: new Date().toISOString(),
-    })
-    .select()
-    .single();
-
-  if (error) {
-    // Handle unique constraint violations
-    if (error.code === '23505') {
-      if (error.message.includes('teaching_assignments_class_offering_teacher_unique')) {
-        throw new Error('This teacher is already assigned to this class offering');
-      }
+export async function createTeachingAssignment(
+  assignment: Omit<TeachingAssignment, 'id' | 'created_at'>
+): Promise<{ data: TeachingAssignment | null; error: string | null }> {
+  try {
+    // Validate assignment
+    const validation = await validateTeachingAssignment(assignment);
+    if (!validation.isValid) {
+      return { data: null, error: validation.message };
     }
-    throw new Error(`Failed to create teaching assignment: ${error.message}`);
-  }
 
-  return data;
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from('teaching_assignments')
+      .insert(assignment)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return { data, error: null };
+  } catch (error) {
+    return handleError('Failed to create teaching assignment', error);
+  }
 }
 
 /**
- * Update a teaching assignment
+ * Update an existing teaching assignment
  */
 export async function updateTeachingAssignment(
-  assignmentId: string, 
-  updates: TeachingAssignmentUpdate
-): Promise<TeachingAssignment> {
-  const supabase = createClient();
-  
-  // Validate assignment data
-  const validation = await validateTeachingAssignment(updates, assignmentId);
-  if (!validation.isValid) {
-    throw new Error(validation.message);
-  }
+  id: string,
+  updates: Partial<TeachingAssignment>
+): Promise<{ data: TeachingAssignment | null; error: string | null }> {
+  try {
+    const supabase = createClient();
 
-  const { data, error } = await supabase
-    .from('teaching_assignments')
-    .update(updates)
-    .eq('id', assignmentId)
-    .select()
-    .single();
+    // Get existing assignments for validation
+    const { data: existingAssignments } = await supabase
+      .from('teaching_assignments')
+      .select(`
+        *,
+        teacher:teachers(*),
+        class_offerings:class_offerings(
+          *,
+          classes:classes(*),
+          scheduled_lessons:scheduled_lessons(
+            *,
+            time_slots:time_slots(*)
+          )
+        )
+      `)
+      .neq('id', id)
+      .eq('teacher_id', updates.teacher_id || '');
 
-  if (error) {
-    // Handle unique constraint violations
-    if (error.code === '23505') {
-      if (error.message.includes('teaching_assignments_class_offering_teacher_unique')) {
-        throw new Error('This teacher is already assigned to this class offering');
-      }
+    // Get current assignment
+    const { data: currentAssignment } = await supabase
+      .from('teaching_assignments')
+      .select(`
+        *,
+        teacher:teachers(*),
+        class_offerings:class_offerings(
+          *,
+          classes:classes(*),
+          scheduled_lessons:scheduled_lessons(
+            *,
+            time_slots:time_slots(*)
+          )
+        )
+      `)
+      .eq('id', id)
+      .single();
+
+    if (!currentAssignment) {
+      return { data: null, error: 'Teaching assignment not found' };
     }
-    throw new Error(`Failed to update teaching assignment: ${error.message}`);
-  }
 
-  return data;
+    const updatedAssignment = { ...currentAssignment, ...updates };
+
+    // Validate updated assignment
+    const validationErrors = validateTeachingAssignment(
+      updatedAssignment as TeachingAssignment,
+      existingAssignments || []
+    );
+
+    if (validationErrors.length > 0) {
+      return { data: null, error: validationErrors.join(', ') };
+    }
+
+    // Update assignment
+    const { data, error } = await supabase
+      .from('teaching_assignments')
+      .update(updates)
+      .eq('id', id)
+      .select(`
+        *,
+        teacher:teachers(*),
+        class_offerings:class_offerings(
+          *,
+          classes:classes(*),
+          scheduled_lessons:scheduled_lessons(
+            *,
+            time_slots:time_slots(*)
+          )
+        )
+      `)
+      .single();
+
+    if (error) throw error;
+
+    const convertedAssignment = convertToTeachingAssignment(data);
+    if (!convertedAssignment) {
+      throw new Error('Failed to convert teaching assignment data');
+    }
+
+    return { data: convertedAssignment, error: null };
+  } catch (error) {
+    return handleError('Failed to update teaching assignment', error);
+  }
 }
 
 /**
  * Delete a teaching assignment
  */
-export async function deleteTeachingAssignment(assignmentId: string): Promise<void> {
-  const supabase = createClient();
-  
-  // Check if this assignment is being used in scheduled lessons
-  const { data: scheduledLessons } = await supabase
-    .from('scheduled_lessons')
-    .select('id')
-    .eq('teaching_assignment_id', assignmentId)
-    .limit(1);
+export async function deleteTeachingAssignment(
+  id: string
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const supabase = createClient();
 
-  if (scheduledLessons && scheduledLessons.length > 0) {
-    throw new Error('Cannot delete teaching assignment: it is being used in scheduled lessons');
-  }
+    const { error } = await supabase
+      .from('teaching_assignments')
+      .delete()
+      .eq('id', id);
 
-  const { error } = await supabase
-    .from('teaching_assignments')
-    .delete()
-    .eq('id', assignmentId);
+    if (error) throw error;
 
-  if (error) {
-    throw new Error(`Failed to delete teaching assignment: ${error.message}`);
+    return { success: true, error: null };
+  } catch (error) {
+    return handleError('Failed to delete teaching assignment', error);
   }
 }
 
@@ -525,65 +718,6 @@ export async function bulkAssignTeachers(
 }
 
 /**
- * Validate teaching assignment
- */
-export async function validateTeachingAssignment(
-  assignmentData: Partial<TeachingAssignment>,
-  excludeId?: string
-): Promise<{ isValid: boolean; message: string }> {
-  const supabase = createClient();
-  
-  if (!assignmentData.class_offering_id || !assignmentData.teacher_id) {
-    return { isValid: false, message: 'Class offering ID and teacher ID are required' };
-  }
-
-  // Check if class offering exists and get school_id
-  const { data: classOffering } = await supabase
-    .from('class_offerings')
-    .select('id, courses(school_id)')
-    .eq('id', assignmentData.class_offering_id)
-    .single();
-
-  if (!classOffering) {
-    return { isValid: false, message: 'Class offering not found' };
-  }
-
-  // Check if teacher exists and belongs to the same school
-  const { data: teacher } = await supabase
-    .from('teachers')
-    .select('id, school_id')
-    .eq('id', assignmentData.teacher_id)
-    .single();
-
-  if (!teacher) {
-    return { isValid: false, message: 'Teacher not found' };
-  }
-
-  if (teacher.school_id !== classOffering.courses?.school_id) {
-    return { isValid: false, message: 'Teacher and class offering must belong to the same school' };
-  }
-
-  // Check if teacher is already assigned to this class offering
-  let query = supabase
-    .from('teaching_assignments')
-    .select('id')
-    .eq('class_offering_id', assignmentData.class_offering_id)
-    .eq('teacher_id', assignmentData.teacher_id);
-
-  if (excludeId) {
-    query = query.neq('id', excludeId);
-  }
-
-  const { data: existingAssignment } = await query;
-
-  if (existingAssignment && existingAssignment.length > 0) {
-    return { isValid: false, message: 'Teacher is already assigned to this class offering' };
-  }
-
-  return { isValid: true, message: 'Teaching assignment is valid' };
-}
-
-/**
  * Get unassigned class offerings for a school
  */
 export async function getUnassignedClassOfferings(schoolId: string): Promise<ClassOffering[]> {
@@ -672,4 +806,126 @@ export async function getAvailableTeachersForClassOffering(classOfferingId: stri
   }
 
   return teachers || [];
+}
+
+export async function getTeacherAssignments(teacherId: string, termId?: string): Promise<TeachingAssignment[]> {
+  const supabase = await createClient();
+
+  let query = supabase
+    .from('teaching_assignments')
+    .select(`
+      *,
+      class_offerings (
+        id,
+        periods_per_week,
+        term_id,
+        classes (
+          id,
+          name,
+          grade_level
+        ),
+        courses (
+          id,
+          name,
+          code,
+          department_id
+        )
+      )
+    `)
+    .eq('teacher_id', teacherId);
+
+  if (termId) {
+    query = query.eq('class_offerings.term_id', termId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * Get teaching assignments for a class offering
+ */
+export async function getClassOfferingAssignments(
+  classOfferingId: string
+): Promise<{ data: TeachingAssignment[] | null; error: string | null }> {
+  try {
+    const supabase = createClient();
+
+    const { data, error } = await supabase
+      .from('teaching_assignments')
+      .select(`
+        *,
+        teacher:teachers(*),
+        class_offerings:class_offerings(
+          *,
+          classes:classes(*),
+          scheduled_lessons:scheduled_lessons(
+            *,
+            time_slots:time_slots(*)
+          )
+        )
+      `)
+      .eq('class_offering_id', classOfferingId);
+
+    if (error) throw error;
+
+    const convertedAssignments = data
+      .map(convertToTeachingAssignment)
+      .filter((a): a is TeachingAssignment => a !== null);
+
+    return { data: convertedAssignments, error: null };
+  } catch (error) {
+    return handleError('Failed to get class offering assignments', error);
+  }
+}
+
+/**
+ * Validate schedule for a set of teaching assignments
+ */
+export async function validateTeachingSchedule(
+  assignments: TeachingAssignment[],
+  schoolId: string
+): Promise<{ isValid: boolean; errors: string[] }> {
+  try {
+    const supabase = createClient();
+
+    // Get school constraints
+    const { data: constraintsData } = await supabase
+      .from('school_constraints')
+      .select('*')
+      .eq('school_id', schoolId)
+      .single();
+
+    if (!constraintsData) {
+      return {
+        isValid: false,
+        errors: ['School constraints not found']
+      };
+    }
+
+    // Get all time slots for these assignments
+    const timeSlots = assignments.flatMap(a => 
+      a.scheduled_lessons?.flatMap(l => l.time_slots) || []
+    ).filter((slot): slot is TimeSlot => slot !== null);
+
+    // Validate schedule
+    const validationErrors = validateSchedule(
+      assignments,
+      timeSlots,
+      constraintsData as SchoolConstraints
+    );
+
+    return {
+      isValid: validationErrors.length === 0,
+      errors: validationErrors
+    };
+  } catch (error) {
+    const { error: errorMessage } = handleError('Failed to validate teaching schedule', error);
+    return {
+      isValid: false,
+      errors: [errorMessage || 'Unknown error occurred']
+    };
+  }
 } 

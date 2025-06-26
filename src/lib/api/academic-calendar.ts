@@ -1,11 +1,11 @@
 import { createClient } from '@/utils/supabase/client';
 import type { Database } from '@/lib/database.types';
+import { AcademicYear, Term } from '../types/database-helpers';
+import { handleError } from '../utils/error-handling';
 
-type AcademicYear = Database['public']['Tables']['academic_years']['Row'];
 type AcademicYearInsert = Database['public']['Tables']['academic_years']['Insert'];
 type AcademicYearUpdate = Database['public']['Tables']['academic_years']['Update'];
 
-type Term = Database['public']['Tables']['terms']['Row'];
 type TermInsert = Database['public']['Tables']['terms']['Insert'];
 type TermUpdate = Database['public']['Tables']['terms']['Update'];
 
@@ -14,11 +14,7 @@ export interface AcademicYearWithTerms extends AcademicYear {
 }
 
 export interface TermWithAcademicYear extends Term {
-  academic_years: {
-    id: string;
-    name: string;
-    school_id: string;
-  };
+  academic_years: Pick<AcademicYear, 'id' | 'name' | 'school_id'>;
 }
 
 export interface AcademicCalendarSummary {
@@ -45,62 +41,88 @@ export interface TermSummary {
   holidays_count: number;
 }
 
+interface AcademicYearValidation {
+  isValid: boolean;
+  message: string;
+  details?: {
+    duration_weeks?: number;
+    term_count?: number;
+    total_teaching_days?: number;
+    holiday_count?: number;
+  };
+}
+
+interface TermValidation {
+  isValid: boolean;
+  message: string;
+  details?: {
+    duration_weeks?: number;
+    teaching_days?: number;
+    holiday_count?: number;
+    class_offerings_count?: number;
+  };
+}
+
 /**
  * Get all academic years with their terms for a school
  */
-export async function getAcademicYearsWithTerms(schoolId: string): Promise<AcademicYearWithTerms[]> {
-  const supabase = createClient();
-  
-  const { data, error } = await supabase
-    .from('academic_years')
-    .select(`
-      *,
-      terms (
-        id,
-        name,
-        start_date,
-        end_date,
-        academic_year_id,
-        period_duration_minutes
-      )
-    `)
-    .eq('school_id', schoolId)
-    .order('start_date', { ascending: false });
+export async function getAcademicYearsWithTerms(schoolId: string): Promise<{ data: AcademicYearWithTerms[] | null; error: string | null }> {
+  try {
+    const supabase = createClient();
+    
+    const { data, error } = await supabase
+      .from('academic_years')
+      .select(`
+        *,
+        terms (
+          id,
+          name,
+          start_date,
+          end_date,
+          academic_year_id,
+          period_duration_minutes
+        )
+      `)
+      .eq('school_id', schoolId)
+      .order('start_date', { ascending: false });
 
-  if (error) {
-    throw new Error(`Failed to fetch academic years: ${error.message}`);
+    if (error) throw error;
+
+    return { data, error: null };
+  } catch (error) {
+    return handleError('Failed to get academic years with terms', error);
   }
-
-  return data || [];
 }
 
 /**
  * Get a single academic year with its terms
  */
-export async function getAcademicYearWithTerms(academicYearId: string): Promise<AcademicYearWithTerms | null> {
-  const supabase = createClient();
-  
-  const { data, error } = await supabase
-    .from('academic_years')
-    .select(`
-      *,
-      terms (
-        id,
-        name,
-        start_date,
-        end_date,
-        academic_year_id,
-        period_duration_minutes
-      )
-    `)
-    .eq('id', academicYearId)
-    .single();
+export async function getAcademicYearWithTerms(academicYearId: string): Promise<{ data: AcademicYearWithTerms | null; error: string | null }> {
+  try {
+    const supabase = createClient();
+    
+    const { data, error } = await supabase
+      .from('academic_years')
+      .select(`
+        *,
+        terms (
+          id,
+          name,
+          start_date,
+          end_date,
+          academic_year_id,
+          period_duration_minutes
+        )
+      `)
+      .eq('id', academicYearId)
+      .single();
 
-  if (error) {
-    throw new Error(`Failed to fetch academic year: ${error.message}`);
+    if (error) throw error;
+
+    return { data, error: null };
+  } catch (error) {
+    return handleError('Failed to get academic year with terms', error);
   }
-
-  return data;
 }
 
 /**
@@ -132,186 +154,421 @@ export async function getTermsWithAcademicYears(schoolId: string): Promise<TermW
 /**
  * Get terms for a specific academic year
  */
-export async function getTermsByAcademicYear(academicYearId: string): Promise<Term[]> {
-  const supabase = createClient();
-  
-  const { data, error } = await supabase
-    .from('terms')
-    .select('*')
-    .eq('academic_year_id', academicYearId)
-    .order('start_date', { ascending: true });
+export async function getTermsByAcademicYear(academicYearId: string): Promise<{ data: Term[] | null; error: string | null }> {
+  try {
+    const supabase = createClient();
+    
+    const { data, error } = await supabase
+      .from('terms')
+      .select('*')
+      .eq('academic_year_id', academicYearId)
+      .order('start_date', { ascending: true });
 
-  if (error) {
-    throw new Error(`Failed to fetch terms: ${error.message}`);
+    if (error) throw error;
+
+    return { data, error: null };
+  } catch (error) {
+    return handleError('Failed to get terms by academic year', error);
   }
-
-  return data || [];
 }
 
 /**
- * Create a new academic year
+ * Validate academic year data
  */
-export async function createAcademicYear(academicYearData: AcademicYearInsert): Promise<AcademicYear> {
-  const supabase = createClient();
-  
-  // Validate dates
-  const startDate = new Date(academicYearData.start_date);
-  const endDate = new Date(academicYearData.end_date);
-  
-  if (endDate <= startDate) {
-    throw new Error('End date must be after start date');
-  }
+async function validateAcademicYear(
+  year: Partial<AcademicYear>
+): Promise<AcademicYearValidation> {
+  try {
+    const errors: string[] = [];
+    const supabase = createClient();
 
-  const { data, error } = await supabase
-    .from('academic_years')
-    .insert(academicYearData)
-    .select()
-    .single();
+    if (!year.name?.trim()) {
+      errors.push('Academic year name is required');
+    }
 
-  if (error) {
-    // Handle unique constraint violations
-    if (error.code === '23505') {
-      if (error.message.includes('academic_years_school_name_unique')) {
-        throw new Error(`An academic year with the name "${academicYearData.name}" already exists for this school`);
+    if (!year.start_date) {
+      errors.push('Start date is required');
+    }
+
+    if (!year.end_date) {
+      errors.push('End date is required');
+    }
+
+    if (year.start_date && year.end_date) {
+      const start = new Date(year.start_date);
+      const end = new Date(year.end_date);
+
+      if (isNaN(start.getTime())) {
+        errors.push('Invalid start date format');
       }
-      if (error.message.includes('academic_years_school_dates_unique')) {
-        throw new Error('Academic year dates overlap with an existing academic year for this school');
+
+      if (isNaN(end.getTime())) {
+        errors.push('Invalid end date format');
+      }
+
+      if (end <= start) {
+        errors.push('End date must be after start date');
+      }
+
+      // Calculate duration
+      const durationWeeks = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 7));
+      
+      if (durationWeeks < 30) {
+        errors.push('Academic year must be at least 30 weeks');
+      }
+
+      if (durationWeeks > 52) {
+        errors.push('Academic year cannot exceed 52 weeks');
+      }
+
+      // Check for overlapping academic years
+      if (year.school_id) {
+        const { data: existingYears } = await supabase
+          .from('academic_years')
+          .select('*')
+          .eq('school_id', year.school_id)
+          .neq('id', year.id || '')
+          .or(`start_date.lte.${year.end_date},end_date.gte.${year.start_date}`);
+
+        if (existingYears && existingYears.length > 0) {
+          errors.push('Academic year dates overlap with existing academic years');
+        }
+      }
+
+      // Get holidays count
+      let holidayCount = 0;
+      if (year.id) {
+        const { count } = await supabase
+          .from('holidays')
+          .select('*', { count: 'exact', head: true })
+          .eq('academic_year_id', year.id);
+        holidayCount = count || 0;
+      }
+
+      // Get term count
+      let termCount = 0;
+      if (year.id) {
+        const { count } = await supabase
+          .from('terms')
+          .select('*', { count: 'exact', head: true })
+          .eq('academic_year_id', year.id);
+        termCount = count || 0;
+      }
+
+      return {
+        isValid: errors.length === 0,
+        message: errors.join(', '),
+        details: {
+          duration_weeks: durationWeeks,
+          term_count: termCount,
+          total_teaching_days: durationWeeks * 5 - holidayCount, // Assuming 5-day weeks
+          holiday_count: holidayCount
+        }
+      };
+    }
+
+    return {
+      isValid: errors.length === 0,
+      message: errors.join(', ')
+    };
+  } catch (error) {
+    return {
+      isValid: false,
+      message: error instanceof Error ? error.message : 'Unknown error occurred'
+    };
+  }
+}
+
+/**
+ * Validate term data
+ */
+async function validateTerm(term: Partial<Term>): Promise<TermValidation> {
+  try {
+    const errors: string[] = [];
+    const supabase = createClient();
+
+    if (!term.name?.trim()) {
+      errors.push('Term name is required');
+    }
+
+    if (!term.start_date) {
+      errors.push('Start date is required');
+    }
+
+    if (!term.end_date) {
+      errors.push('End date is required');
+    }
+
+    if (!term.academic_year_id) {
+      errors.push('Academic year is required');
+    }
+
+    if (term.period_duration_minutes !== undefined) {
+      if (term.period_duration_minutes < 30) {
+        errors.push('Period duration must be at least 30 minutes');
+      }
+      if (term.period_duration_minutes > 120) {
+        errors.push('Period duration cannot exceed 120 minutes');
       }
     }
-    throw new Error(`Failed to create academic year: ${error.message}`);
-  }
 
-  return data;
+    if (term.start_date && term.end_date) {
+      const start = new Date(term.start_date);
+      const end = new Date(term.end_date);
+
+      if (isNaN(start.getTime())) {
+        errors.push('Invalid start date format');
+      }
+
+      if (isNaN(end.getTime())) {
+        errors.push('Invalid end date format');
+      }
+
+      if (end <= start) {
+        errors.push('End date must be after start date');
+      }
+
+      // Calculate duration
+      const durationWeeks = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 7));
+      
+      if (durationWeeks < 6) {
+        errors.push('Term must be at least 6 weeks');
+      }
+
+      if (durationWeeks > 16) {
+        errors.push('Term cannot exceed 16 weeks');
+      }
+
+      // Check if term dates are within academic year
+      if (term.academic_year_id) {
+        const { data: academicYear } = await supabase
+          .from('academic_years')
+          .select('start_date, end_date')
+          .eq('id', term.academic_year_id)
+          .single();
+
+        if (academicYear) {
+          const academicYearStart = new Date(academicYear.start_date);
+          const academicYearEnd = new Date(academicYear.end_date);
+
+          if (start < academicYearStart) {
+            errors.push('Term cannot start before academic year');
+          }
+
+          if (end > academicYearEnd) {
+            errors.push('Term cannot end after academic year');
+          }
+        }
+      }
+
+      // Check for overlapping terms in the same academic year
+      if (term.academic_year_id) {
+        const { data: existingTerms } = await supabase
+          .from('terms')
+          .select('*')
+          .eq('academic_year_id', term.academic_year_id)
+          .neq('id', term.id || '')
+          .or(`start_date.lte.${term.end_date},end_date.gte.${term.start_date}`);
+
+        if (existingTerms && existingTerms.length > 0) {
+          errors.push('Term dates overlap with existing terms');
+        }
+      }
+
+      // Get holidays count
+      let holidayCount = 0;
+      if (term.id) {
+        const { count } = await supabase
+          .from('holidays')
+          .select('*', { count: 'exact', head: true })
+          .eq('term_id', term.id);
+        holidayCount = count || 0;
+      }
+
+      // Get class offerings count
+      let classOfferingsCount = 0;
+      if (term.id) {
+        const { count } = await supabase
+          .from('class_offerings')
+          .select('*', { count: 'exact', head: true })
+          .eq('term_id', term.id);
+        classOfferingsCount = count || 0;
+      }
+
+      return {
+        isValid: errors.length === 0,
+        message: errors.join(', '),
+        details: {
+          duration_weeks: durationWeeks,
+          teaching_days: durationWeeks * 5 - holidayCount, // Assuming 5-day weeks
+          holiday_count: holidayCount,
+          class_offerings_count: classOfferingsCount
+        }
+      };
+    }
+
+    return {
+      isValid: errors.length === 0,
+      message: errors.join(', ')
+    };
+  } catch (error) {
+    return {
+      isValid: false,
+      message: error instanceof Error ? error.message : 'Unknown error occurred'
+    };
+  }
+}
+
+/**
+ * Create a new academic year with validation
+ */
+export async function createAcademicYear(
+  year: Omit<AcademicYear, 'id' | 'created_at'>
+): Promise<{ data: AcademicYear | null; error: string | null }> {
+  try {
+    // Validate year
+    const validation = await validateAcademicYear(year);
+    if (!validation.isValid) {
+      return { data: null, error: validation.message };
+    }
+
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from('academic_years')
+      .insert(year)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return { data, error: null };
+  } catch (error) {
+    return handleError('Failed to create academic year', error);
+  }
 }
 
 /**
  * Update an academic year
  */
 export async function updateAcademicYear(
-  academicYearId: string, 
-  updates: AcademicYearUpdate
-): Promise<AcademicYear> {
-  const supabase = createClient();
-  
-  // Validate dates if provided
-  if (updates.start_date && updates.end_date) {
-    const startDate = new Date(updates.start_date);
-    const endDate = new Date(updates.end_date);
-    
-    if (endDate <= startDate) {
-      throw new Error('End date must be after start date');
+  id: string,
+  updates: Partial<AcademicYear>
+): Promise<{ data: AcademicYear | null; error: string | null }> {
+  try {
+    const supabase = createClient();
+
+    // Get current academic year
+    const { data: currentYear } = await supabase
+      .from('academic_years')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (!currentYear) {
+      return { data: null, error: 'Academic year not found' };
     }
-  }
 
-  const { data, error } = await supabase
-    .from('academic_years')
-    .update(updates)
-    .eq('id', academicYearId)
-    .select()
-    .single();
+    // Validate dates if they're being updated
+    if (updates.start_date && !isValidDate(updates.start_date)) {
+      return { data: null, error: 'Invalid start date format' };
+    }
+    if (updates.end_date && !isValidDate(updates.end_date)) {
+      return { data: null, error: 'Invalid end date format' };
+    }
 
-  if (error) {
-    // Handle unique constraint violations
-    if (error.code === '23505') {
-      if (error.message.includes('academic_years_school_name_unique')) {
-        throw new Error(`An academic year with the name "${updates.name}" already exists for this school`);
-      }
-      if (error.message.includes('academic_years_school_dates_unique')) {
-        throw new Error('Academic year dates overlap with an existing academic year for this school');
+    // Check if dates are in correct order
+    const startDate = updates.start_date || currentYear.start_date;
+    const endDate = updates.end_date || currentYear.end_date;
+    if (new Date(startDate) >= new Date(endDate)) {
+      return { data: null, error: 'End date must be after start date' };
+    }
+
+    // Check for overlapping academic years if dates are being updated
+    if (updates.start_date || updates.end_date) {
+      const { data: existingYears } = await supabase
+        .from('academic_years')
+        .select('*')
+        .eq('school_id', currentYear.school_id)
+        .neq('id', id)
+        .or(`start_date.lte.${endDate},end_date.gte.${startDate}`);
+
+      if (existingYears && existingYears.length > 0) {
+        return { data: null, error: 'Academic year overlaps with existing academic years' };
       }
     }
-    throw new Error(`Failed to update academic year: ${error.message}`);
-  }
 
-  return data;
-}
+    const { data, error } = await supabase
+      .from('academic_years')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
 
-/**
- * Delete an academic year and all its terms
- */
-export async function deleteAcademicYear(academicYearId: string): Promise<void> {
-  const supabase = createClient();
-  
-  // Check if there are any class offerings using terms from this academic year
-  const { data: offerings } = await supabase
-    .from('class_offerings')
-    .select('id')
-    .eq('terms.academic_year_id', academicYearId)
-    .limit(1);
+    if (error) throw error;
 
-  if (offerings && offerings.length > 0) {
-    throw new Error('Cannot delete academic year: it has class offerings associated with its terms');
-  }
-
-  // Delete terms first (cascade will handle this, but we'll be explicit)
-  await supabase
-    .from('terms')
-    .delete()
-    .eq('academic_year_id', academicYearId);
-
-  // Delete academic year
-  const { error } = await supabase
-    .from('academic_years')
-    .delete()
-    .eq('id', academicYearId);
-
-  if (error) {
-    throw new Error(`Failed to delete academic year: ${error.message}`);
+    return { data, error: null };
+  } catch (error) {
+    return handleError('Failed to update academic year', error);
   }
 }
 
 /**
- * Create a new term
+ * Delete an academic year
  */
-export async function createTerm(termData: TermInsert): Promise<Term> {
-  const supabase = createClient();
-  
-  // Validate dates
-  const startDate = new Date(termData.start_date);
-  const endDate = new Date(termData.end_date);
-  
-  if (endDate <= startDate) {
-    throw new Error('Term end date must be after start date');
-  }
+export async function deleteAcademicYear(
+  id: string
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const supabase = createClient();
 
-  // Get academic year dates to validate term dates
-  const { data: academicYear } = await supabase
-    .from('academic_years')
-    .select('start_date, end_date')
-    .eq('id', termData.academic_year_id)
-    .single();
-
-  if (!academicYear) {
-    throw new Error('Academic year not found');
-  }
-
-  const yearStart = new Date(academicYear.start_date);
-  const yearEnd = new Date(academicYear.end_date);
-
-  if (startDate < yearStart || endDate > yearEnd) {
-    throw new Error('Term dates must be within the academic year dates');
-  }
-
-  const { data, error } = await supabase
-    .from('terms')
-    .insert(termData)
-    .select()
-    .single();
-
-  if (error) {
-    // Handle unique constraint violations
-    if (error.code === '23505') {
-      if (error.message.includes('terms_academic_year_name_unique')) {
-        throw new Error(`A term with the name "${termData.name}" already exists in this academic year`);
-      }
-      if (error.message.includes('terms_academic_year_dates_unique')) {
-        throw new Error('Term dates overlap with an existing term in this academic year');
-      }
+    // Check for dependencies
+    const dependencies = await checkAcademicYearDependencies(id);
+    if (dependencies.hasDependencies) {
+      return {
+        success: false,
+        error: `Cannot delete academic year: ${dependencies.message}`
+      };
     }
-    throw new Error(`Failed to create term: ${error.message}`);
-  }
 
-  return data;
+    const { error } = await supabase
+      .from('academic_years')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+
+    return { success: true, error: null };
+  } catch (error) {
+    return handleError('Failed to delete academic year', error);
+  }
+}
+
+/**
+ * Create a new term with validation
+ */
+export async function createTerm(
+  term: Omit<Term, 'id' | 'created_at'>
+): Promise<{ data: Term | null; error: string | null }> {
+  try {
+    // Validate term
+    const validation = await validateTerm(term);
+    if (!validation.isValid) {
+      return { data: null, error: validation.message };
+    }
+
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from('terms')
+      .insert(term)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return { data, error: null };
+  } catch (error) {
+    return handleError('Failed to create term', error);
+  }
 }
 
 /**
@@ -619,5 +876,45 @@ export async function getCurrentAcademicPeriod(schoolId: string): Promise<{
   return {
     academicYear,
     term: term || null,
+  };
+}
+
+/**
+ * Helper function to validate date format
+ */
+function isValidDate(dateString: string): boolean {
+  const date = new Date(dateString);
+  return date instanceof Date && !isNaN(date.getTime());
+}
+
+/**
+ * Helper function to check academic year dependencies
+ */
+async function checkAcademicYearDependencies(
+  academicYearId: string
+): Promise<{ hasDependencies: boolean; message: string }> {
+  const supabase = createClient();
+
+  // Check for various dependencies
+  const [
+    { count: termsCount },
+    { count: holidaysCount },
+    { count: classOfferingsCount }
+  ] = await Promise.all([
+    supabase.from('terms').select('*', { count: 'exact', head: true }).eq('academic_year_id', academicYearId),
+    supabase.from('holidays').select('*', { count: 'exact', head: true }).eq('academic_year_id', academicYearId),
+    supabase.from('class_offerings').select('*', { count: 'exact', head: true }).eq('academic_year_id', academicYearId)
+  ]);
+
+  const dependencies = [];
+  if (termsCount) dependencies.push(`${termsCount} terms`);
+  if (holidaysCount) dependencies.push(`${holidaysCount} holidays`);
+  if (classOfferingsCount) dependencies.push(`${classOfferingsCount} class offerings`);
+
+  return {
+    hasDependencies: dependencies.length > 0,
+    message: dependencies.length > 0
+      ? `Academic year has active ${dependencies.join(', ')}`
+      : ''
   };
 } 
