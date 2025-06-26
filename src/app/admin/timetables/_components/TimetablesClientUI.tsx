@@ -11,16 +11,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { 
-  getScheduledLessonsClient, 
-  getTimetableGenerationsClient, 
-  getClassesForSchoolClient, 
-  getTeachersForSchoolClient, 
+  getTimetablesForSchoolClient,
   getTermsForSchoolClient,
-  getDayName,
   formatTime,
+  getDayName,
   type TimetableLesson,
   type TimetableFilters
-} from '@/lib/api/timetables-simple';
+} from '@/lib/api/timetables-legacy';
 import { createClient } from '@/utils/supabase/client';
 
 interface TimetablesClientUIProps {
@@ -55,7 +52,7 @@ export default function TimetablesClientUI({
     
     setLoading(true);
     try {
-      const filteredLessons = await getScheduledLessonsClient(schoolId, newFilters);
+      const filteredLessons = await getTimetablesForSchoolClient(schoolId, newFilters);
       setLessons(filteredLessons);
     } catch (error) {
       console.error('Error filtering lessons:', error);
@@ -68,8 +65,8 @@ export default function TimetablesClientUI({
     setLoading(true);
     try {
       const [newLessons, newGenerations] = await Promise.all([
-        getScheduledLessonsClient(schoolId, filters),
-        getTimetableGenerationsClient(schoolId)
+        getTimetablesForSchoolClient(schoolId, filters),
+        getTimetablesForSchoolClient(schoolId, { ...filters, type: 'generation' })
       ]);
       setLessons(newLessons);
       setGenerations(newGenerations);

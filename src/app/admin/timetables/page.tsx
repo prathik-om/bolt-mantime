@@ -8,6 +8,10 @@ import {
   getTermsForSchool 
 } from '@/lib/api/timetables-simple-server';
 import TimetablesClientUI from './_components/TimetablesClientUI';
+import {
+  getTimetablesForSchoolServer,
+  getTermsForSchoolServer
+} from '@/lib/api/timetables-legacy';
 
 export default async function TimetablesPage() {
   const supabase = await createClient();

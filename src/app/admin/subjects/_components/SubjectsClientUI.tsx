@@ -68,43 +68,48 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { createClient } from '@/utils/supabase/client';
 import type { Database } from "@/types/database";
-import { assignCourseToClasses, getCoursesWithClassOfferings } from "@/lib/api/course-class-offerings";
+import { assignSubjectToClasses, getSubjectsWithClassOfferings } from "@/lib/api/subject-class-offerings";
 import { validateTermHours } from "@/lib/utils";
-import { displayError, validateCourseForm, validateRequired, validateLength, validateGradeLevel, validatePositiveNumber } from '@/lib/utils/error-handling';
+import { displayError, validateSubjectForm, validateRequired, validateLength, validateGradeLevel, validatePositiveNumber } from '@/lib/utils/error-handling';
 
-type Course = Database['public']['Tables']['courses']['Row'];
+type Subject = Database['public']['Tables']['subjects']['Row'];
 type Department = Database['public']['Tables']['departments']['Row'];
 type Class = Database['public']['Tables']['classes']['Row'];
 type ClassOffering = Database['public']['Tables']['class_offerings']['Row'];
 
-interface EnhancedCourse extends Course {
-  departments: { id: string; name: string; } | null;
+type EnhancedSubject = Subject & {
+  departments: {
+    id: string;
+    name: string;
+  } | null;
   class_offerings: Array<{
     id: string;
     class_id: string;
     periods_per_week: number;
     required_hours_per_term: number | null;
     term_id: string;
-    classes: { id: string; name: string; grade_level: number; school_id: string; } | null;
+    classes: {
+      id: string;
+      name: string;
+      grade_id: number;
+      section: string;
+    } | null;
   }>;
-}
+};
 
 interface SubjectsClientUIProps {
-  initialSubjects: (Course & { departments: Department | null })[];
+  initialSubjects: Subject[];
   departments: Department[];
   classes: Class[];
   schoolId: string;
 }
 
 interface SchedulingMetrics {
-  totalCourses: number;
+  totalSubjects: number;
   totalClassOfferings: number;
   totalTeachingHours: number;
-  averagePeriodsPerWeek: number;
-  coursesWithCustomHours: number;
-  coursesWithEqualDistribution: number;
-  gradeCoverage: Record<number, number>;
-  departmentDistribution: Record<string, number>;
+  subjectsWithCustomHours: number;
+  subjectsWithEqualDistribution: number;
 }
 
 export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({ 
@@ -113,14 +118,20 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
   classes,
   schoolId 
 }) => {
-  const [subjects, setSubjects] = useState<EnhancedCourse[]>([]);
+  const [subjects, setSubjects] = useState<EnhancedSubject[]>(initialSubjects);
   const [modalOpen, setModalOpen] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<Course | null>(null);
-  const [editingSubject, setEditingSubject] = useState<Course | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Subject | null>(null);
+  const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [loading, setLoading] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("overview");
-  const [schedulingMetrics, setSchedulingMetrics] = useState<SchedulingMetrics | null>(null);
+  const [schedulingMetrics, setSchedulingMetrics] = useState<SchedulingMetrics>({
+    totalSubjects: 0,
+    totalClassOfferings: 0,
+    totalTeachingHours: 0,
+    subjectsWithCustomHours: 0,
+    subjectsWithEqualDistribution: 0
+  });
   const [filterDepartment, setFilterDepartment] = useState<string>("all");
   const [filterGrade, setFilterGrade] = useState<string>("all");
   const [showSchedulingPreview, setShowSchedulingPreview] = useState(false);
@@ -163,7 +174,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
   // Load enhanced data with class offerings
   const loadEnhancedData = useCallback(async () => {
     try {
-      const enhancedSubjects = await getCoursesWithClassOfferings(schoolId);
+      const enhancedSubjects = await getSubjectsWithClassOfferings(schoolId);
       setSubjects(enhancedSubjects);
       calculateSchedulingMetrics(enhancedSubjects);
     } catch (error) {
@@ -173,48 +184,35 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
   }, [schoolId]);
 
   // Calculate scheduling metrics for AI algorithm
-  const calculateSchedulingMetrics = useCallback((courses: EnhancedCourse[]) => {
+  const calculateSchedulingMetrics = useCallback((subjects: EnhancedSubject[]) => {
     const metrics: SchedulingMetrics = {
-      totalCourses: courses.length,
+      totalSubjects: subjects.length,
       totalClassOfferings: 0,
       totalTeachingHours: 0,
-      averagePeriodsPerWeek: 0,
-      coursesWithCustomHours: 0,
-      coursesWithEqualDistribution: 0,
-      gradeCoverage: {},
-      departmentDistribution: {},
+      subjectsWithCustomHours: 0,
+      subjectsWithEqualDistribution: 0
     };
 
-    let totalPeriods = 0;
-    let totalOfferings = 0;
+    subjects.forEach(subject => {
+      const offerings = subject.class_offerings || [];
+      metrics.totalClassOfferings += offerings.length;
+      
+      const hasCustomHours = offerings.some(o => o.required_hours_per_term !== null);
+      const allSamePeriods = offerings.every((o, i, arr) => 
+        o.periods_per_week === arr[0].periods_per_week
+      );
 
-    courses.forEach(course => {
-      metrics.totalClassOfferings += course.class_offerings.length;
-      totalOfferings += course.class_offerings.length;
-      metrics.totalTeachingHours += course.total_hours_per_year || 0;
-
-      if (course.hours_distribution_type === 'custom') {
-        metrics.coursesWithCustomHours++;
-      } else {
-        metrics.coursesWithEqualDistribution++;
+      if (hasCustomHours) {
+        metrics.subjectsWithCustomHours++;
+      } else if (allSamePeriods) {
+        metrics.subjectsWithEqualDistribution++;
       }
 
-      course.class_offerings.forEach(offering => {
-        totalPeriods += offering.periods_per_week;
-        
-        if (offering.classes) {
-          const grade = offering.classes.grade_level;
-          metrics.gradeCoverage[grade] = (metrics.gradeCoverage[grade] || 0) + 1;
-        }
-      });
-
-      if (course.departments) {
-        const deptName = course.departments.name;
-        metrics.departmentDistribution[deptName] = (metrics.departmentDistribution[deptName] || 0) + 1;
-      }
+      metrics.totalTeachingHours += offerings.reduce((sum, o) => 
+        sum + (o.required_hours_per_term || (o.periods_per_week * 40)), 0
+      );
     });
 
-    metrics.averagePeriodsPerWeek = totalOfferings > 0 ? totalPeriods / totalOfferings : 0;
     setSchedulingMetrics(metrics);
   }, []);
 
@@ -229,11 +227,11 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
     setModalOpen(true);
   };
 
-  const openEditModal = async (subject: Course) => {
+  const openEditModal = async (subject: Subject) => {
     setEditingSubject(subject);
     
     try {
-      const enhancedSubjects = await getCoursesWithClassOfferings(schoolId);
+      const enhancedSubjects = await getSubjectsWithClassOfferings(schoolId);
       const enhancedSubject = enhancedSubjects.find(c => c.id === subject.id);
       
       if (enhancedSubject) {
@@ -273,7 +271,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
     setLoading(true);
     try {
       // Validate form data
-      const formErrors = validateCourseForm(values);
+      const formErrors = validateSubjectForm(values);
       if (Object.keys(formErrors).length > 0) {
         const firstError = Object.values(formErrors)[0];
         toast.error(firstError);
@@ -292,7 +290,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
 
       if (editingSubject) {
         const { data, error } = await createClient()
-          .from("courses")
+          .from("subjects")
           .update({
             name: values.name,
             code: values.code,
@@ -310,7 +308,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
         
         if (error) throw error;
         
-        const result = await assignCourseToClasses(
+        const result = await assignSubjectToClasses(
           editingSubject.id,
           values.class_offerings.map(offering => ({
             class_id: offering.class_id,
@@ -325,7 +323,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
         }
       } else {
         const { data, error } = await createClient()
-          .from("courses")
+          .from("subjects")
           .insert({
             name: values.name,
             code: values.code,
@@ -344,7 +342,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
         if (error) throw error;
         
         if (data && data[0]) {
-          const result = await assignCourseToClasses(data[0].id, values.class_offerings.map(offering => ({
+          const result = await assignSubjectToClasses(data[0].id, values.class_offerings.map(offering => ({
             class_id: offering.class_id,
             periods_per_week: offering.periods_per_week,
             required_hours_per_term: offering.required_hours_per_term,
@@ -372,7 +370,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
     setLoading(true);
     try {
       const { error } = await createClient()
-        .from("courses")
+        .from("subjects")
         .delete()
         .eq("id", confirmDelete.id);
       
@@ -395,21 +393,21 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
     if (filterGrade !== "all") {
       const grade = parseInt(filterGrade);
       const hasGrade = subject.class_offerings.some(offering => 
-        offering.classes?.grade_level === grade
+        offering.classes?.grade_id === grade
       );
       if (!hasGrade) return false;
     }
     return true;
   });
 
-  const getClassOfferingsSummary = (subject: EnhancedCourse) => {
+  const getClassOfferingsSummary = (subject: EnhancedSubject) => {
     const offerings = subject.class_offerings;
     if (!offerings.length) return "No offerings";
     
     const byGrade: Record<number, string[]> = {};
     offerings.forEach(offering => {
       if (offering.classes) {
-        const grade = offering.classes.grade_level;
+        const grade = offering.classes.grade_id;
         if (!byGrade[grade]) byGrade[grade] = [];
         byGrade[grade].push(offering.classes.name);
       }
@@ -420,7 +418,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
       .join('; ');
   };
 
-  const getSchedulingComplexity = (subject: EnhancedCourse) => {
+  const getSchedulingComplexity = (subject: EnhancedSubject) => {
     const offerings = subject.class_offerings.length;
     const hours = subject.total_hours_per_year || 0;
     const hasCustomHours = subject.hours_distribution_type === 'custom';
@@ -482,7 +480,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
                   size={80}
                   thickness={8}
                   sections={[
-                    { value: (schedulingMetrics.totalClassOfferings / (schedulingMetrics.totalCourses * 12)) * 100, color: 'blue' }
+                    { value: (schedulingMetrics.totalClassOfferings / (schedulingMetrics.totalSubjects * 12)) * 100, color: 'blue' }
                   ]}
                   label={
                     <Text ta="center" size="xs" fw={700}>
@@ -501,7 +499,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
                   size={80}
                   thickness={8}
                   sections={[
-                    { value: (schedulingMetrics.totalTeachingHours / (schedulingMetrics.totalCourses * 200)) * 100, color: 'green' }
+                    { value: (schedulingMetrics.totalTeachingHours / (schedulingMetrics.totalSubjects * 200)) * 100, color: 'green' }
                   ]}
                   label={
                     <Text ta="center" size="xs" fw={700}>
@@ -520,30 +518,11 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
                   size={80}
                   thickness={8}
                   sections={[
-                    { value: (schedulingMetrics.averagePeriodsPerWeek / 10) * 100, color: 'orange' }
+                    { value: (schedulingMetrics.subjectsWithCustomHours / schedulingMetrics.totalSubjects) * 100, color: 'purple' }
                   ]}
                   label={
                     <Text ta="center" size="xs" fw={700}>
-                      {schedulingMetrics.averagePeriodsPerWeek.toFixed(1)}
-                    </Text>
-                  }
-                />
-                <Text size="sm" fw={500}>Avg Periods/Week</Text>
-                <Text size="xs" c="dimmed">Per class offering</Text>
-              </Stack>
-            </Grid.Col>
-            
-            <Grid.Col span={3}>
-              <Stack align="center" gap="xs">
-                <RingProgress
-                  size={80}
-                  thickness={8}
-                  sections={[
-                    { value: (schedulingMetrics.coursesWithCustomHours / schedulingMetrics.totalCourses) * 100, color: 'purple' }
-                  ]}
-                  label={
-                    <Text ta="center" size="xs" fw={700}>
-                      {schedulingMetrics.coursesWithCustomHours}
+                      {schedulingMetrics.subjectsWithCustomHours}
                     </Text>
                   }
                 />
@@ -618,7 +597,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
               variant="light"
             >
               {subjects.length === 0 
-                ? "Get started by adding your first subject. Subjects are specific courses within departments that can be assigned to multiple grades and classes."
+                ? "Get started by adding your first subject. Subjects are specific topics within departments that can be assigned to multiple grades and classes."
                 : "No subjects match the current filters. Try adjusting your filter criteria."
               }
             </Alert>
@@ -827,7 +806,7 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
                 <Grid.Col span={6}>
                   <Text fw={500} mb="md">Grade Level Coverage</Text>
                   <Stack gap="xs">
-                    {Object.entries(schedulingMetrics.gradeCoverage)
+                    {Object.entries(schedulingMetrics.subjectsWithCustomHours)
                       .sort(([a], [b]) => parseInt(a) - parseInt(b))
                       .map(([grade, count]) => (
                         <Group key={grade} justify="space-between">
@@ -841,12 +820,12 @@ export const SubjectsClientUI: React.FC<SubjectsClientUIProps> = ({
                 <Grid.Col span={6}>
                   <Text fw={500} mb="md">Department Distribution</Text>
                   <Stack gap="xs">
-                    {Object.entries(schedulingMetrics.departmentDistribution)
+                    {Object.entries(schedulingMetrics.subjectsWithCustomHours)
                       .sort(([, a], [, b]) => b - a)
                       .map(([dept, count]) => (
                         <Group key={dept} justify="space-between">
                           <Text size="sm">{dept}</Text>
-                          <Badge variant="light">{count} courses</Badge>
+                          <Badge variant="light">{count} subjects</Badge>
                         </Group>
                       ))}
                   </Stack>

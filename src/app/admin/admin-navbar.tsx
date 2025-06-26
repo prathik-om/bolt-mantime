@@ -16,6 +16,8 @@ import {
   IconBrain,
   IconLink,
   IconTable,
+  IconCertificate,
+  IconUsersGroup,
 } from '@tabler/icons-react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
@@ -24,16 +26,12 @@ const links = [
   { icon: IconLayoutDashboard, label: 'Dashboard', href: '/admin/dashboard' },
   { icon: IconBuilding, label: 'Schools', href: '/admin/schools' },
   { icon: IconUsers, label: 'Teachers', href: '/admin/teachers' },
-  { icon: IconBuilding, label: 'Departments', href: '/admin/departments' },
+  { icon: IconCertificate, label: 'Teacher Qualifications', href: '/admin/teacher-qualifications' },
+  { icon: IconUsersGroup, label: 'Classes', href: '/admin/classes' },
   { icon: IconBook, label: 'Subjects', href: '/admin/subjects' },
-  { icon: IconLink, label: 'Course Mappings', href: '/admin/course-mappings' },
-  { icon: IconSchool, label: 'Classes', href: '/admin/classes' },
-  { icon: IconBook2, label: 'Class Offerings', href: '/admin/class-offerings' },
-  { icon: IconBrain, label: 'Teaching Assignments', href: '/admin/teaching-assignments' },
-  { icon: IconCalendar, label: 'Academic Years', href: '/admin/academic-years' },
-  { icon: IconClock, label: 'Terms', href: '/admin/terms' },
+  { icon: IconLink, label: 'Grade-Subject Mappings', href: '/admin/grade-subjects' },
   { icon: IconCalendarTime, label: 'Academic Calendar', href: '/admin/academic-calendar' },
-  { icon: IconSparkles, label: 'AI Generator', href: '/admin/generator' },
+  { icon: IconClock, label: 'Time Slots', href: '/admin/time-slots' },
   { icon: IconTable, label: 'Timetables', href: '/admin/timetables' },
 ];
 
