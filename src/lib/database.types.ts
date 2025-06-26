@@ -7,6 +7,31 @@ export type Json =
   | Json[]
 
 export type Database = {
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          operationName?: string
+          query?: string
+          variables?: Json
+          extensions?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       academic_years: {
@@ -389,8 +414,12 @@ export type Database = {
       }
       schools: {
         Row: {
+          break_required: boolean | null
           end_time: string | null
           id: string
+          max_consecutive_lessons: number | null
+          max_lessons_per_day: number | null
+          min_lessons_per_day: number | null
           name: string
           period_duration: number | null
           sessions_per_day: number | null
@@ -399,8 +428,12 @@ export type Database = {
           working_days: string[] | null
         }
         Insert: {
+          break_required?: boolean | null
           end_time?: string | null
           id?: string
+          max_consecutive_lessons?: number | null
+          max_lessons_per_day?: number | null
+          min_lessons_per_day?: number | null
           name: string
           period_duration?: number | null
           sessions_per_day?: number | null
@@ -409,8 +442,12 @@ export type Database = {
           working_days?: string[] | null
         }
         Update: {
+          break_required?: boolean | null
           end_time?: string | null
           id?: string
+          max_consecutive_lessons?: number | null
+          max_lessons_per_day?: number | null
+          min_lessons_per_day?: number | null
           name?: string
           period_duration?: number | null
           sessions_per_day?: number | null
@@ -1161,6 +1198,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       day_of_week: [

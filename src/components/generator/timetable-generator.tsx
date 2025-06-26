@@ -6,15 +6,32 @@ import { useSchoolStats } from '@/hooks/use-school-stats'
 import { Card, Button, Alert, Text, Group, Stack, Select, NumberInput, Textarea } from '@mantine/core'
 import { useSchoolContext } from '@/hooks/use-school-context'
 import { LoadingSpinner } from '@/components/ui/loading-spinner'
+import { Progress } from '@/components/ui/progress'
+import { generateTimetable } from '@/lib/api/timetable-generator'
+import { useTimetableValidation } from '@/hooks/use-timetable-validation'
+import { createClient } from '@/utils/supabase/client'
 
-export function TimetableGenerator() {
+interface TimetableGeneratorProps {
+  termId: string
+  departmentId?: string
+  gradeLevel?: number
+  onComplete?: (timetableId: string) => void
+  onError?: (error: Error) => void
+}
+
+export function TimetableGenerator({
+  termId,
+  departmentId,
+  gradeLevel,
+  onComplete,
+  onError
+}: TimetableGeneratorProps) {
   const [isGenerating, setIsGenerating] = useState(false)
-  const [generationSettings, setGenerationSettings] = useState({
-    algorithm: 'genetic',
-    maxIterations: 1000,
-    populationSize: 100,
-    mutationRate: 0.1,
-    crossoverRate: 0.8,
+  const [progress, setProgress] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+  const { school } = useSchoolContext()
+  const { isValidating, isValid, errors, validateTimetable } = useTimetableValidation({
+    schoolId: school.id
   })
 
   const { stats } = useSchoolStats()
@@ -33,21 +50,57 @@ export function TimetableGenerator() {
   const isReady = readinessIssues.length === 0
 
   const handleGenerate = async () => {
-    if (!isReady) return
-
-    setIsGenerating(true)
-    
     try {
-      // Simulate AI generation process
-      await new Promise(resolve => setTimeout(resolve, 3000))
-      
-      // In a real implementation, this would call the AI generation service
-      console.log('Generating timetable with settings:', generationSettings)
-      
-      alert('Timetable generated successfully!')
-    } catch (error) {
-      console.error('Failed to generate timetable:', error)
-      alert('Failed to generate timetable. Please try again.')
+      setIsGenerating(true)
+      setError(null)
+      setProgress(0)
+
+      const result = await generateTimetable({
+        termId,
+        schoolId: school.id,
+        departmentId,
+        gradeLevel
+      })
+
+      if (!result.success) {
+        setError(result.errors.join('\n'))
+        onError?.(new Error(result.errors.join('\n')))
+        return
+      }
+
+      // Calculate progress
+      if (result.lessonsScheduled && result.totalLessonsNeeded) {
+        const progressPercent = (result.lessonsScheduled / result.totalLessonsNeeded) * 100
+        setProgress(progressPercent)
+      }
+
+      // Validate the generated timetable
+      const supabase = createClient()
+      const { data: timetable } = await supabase
+        .from('scheduled_lessons')
+        .select(`
+          id,
+          teaching_assignments (
+            teacher_id,
+            class_offering_id
+          ),
+          time_slots (*)
+        `)
+        .eq('teaching_assignments.class_offerings.term_id', termId)
+
+      const isValid = await validateTimetable(timetable || [])
+
+      if (!isValid) {
+        setError('Generated timetable violates school constraints')
+        onError?.(new Error('Generated timetable violates school constraints'))
+        return
+      }
+
+      onComplete?.(result.timetableId!)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to generate timetable'
+      setError(message)
+      onError?.(err instanceof Error ? err : new Error(message))
     } finally {
       setIsGenerating(false)
     }
@@ -173,7 +226,7 @@ export function TimetableGenerator() {
           
           <Button
             onClick={handleGenerate}
-            disabled={!isReady || isGenerating}
+            disabled={!isReady || isGenerating || isValidating}
             className="mt-4"
           >
             {isGenerating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Zap className="w-4 h-4 mr-2" />}
@@ -181,19 +234,28 @@ export function TimetableGenerator() {
           </Button>
         </div>
 
-        {isGenerating && (
-          <div className="mb-6">
-            <div className="flex items-center space-x-3 mb-2">
-              <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
-              <span className="text-blue-600 font-medium">AI is processing your requirements...</span>
+        {(isGenerating || progress > 0) && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span>Progress</span>
+              <span>{Math.round(progress)}%</span>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div className="bg-blue-600 h-2 rounded-full animate-pulse" style={{ width: '60%' }}></div>
-            </div>
-            <div className="text-sm text-gray-600 mt-2">
-              Analyzing constraints, optimizing schedules, and detecting conflicts...
-            </div>
+            <Progress value={progress} />
           </div>
+        )}
+
+        {error && (
+          <Alert variant="destructive">
+            <p className="text-sm whitespace-pre-line">{error}</p>
+          </Alert>
+        )}
+
+        {errors.length > 0 && !error && (
+          <Alert variant="warning">
+            <p className="text-sm whitespace-pre-line">
+              {errors.join('\n')}
+            </p>
+          </Alert>
         )}
       </Card>
     </div>
